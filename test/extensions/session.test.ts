@@ -1,40 +1,40 @@
-import {afterEach, expect, test} from 'vitest';
-import fs, {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import { afterEach, expect, test } from 'vitest';
+import fs, { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
-import path, {dirname, join} from 'node:path';
-import {fileURLToPath, pathToFileURL} from 'node:url';
+import path, { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import cavemanSessionExtension from '../../extensions/caveman/index.ts';
 import comboToggleExtension from '../../extensions/combo/index.ts';
 import tersioCommandsExtension from '../../extensions/commands/index.ts';
 import rtkSessionExtension from '../../extensions/rtk/session.ts';
-import {stopWatching} from '../../extensions/codegraph/client.ts';
-import {getCodeGraph} from '../../extensions/codegraph/shared.ts';
-import {createCodeGraphTestFixture} from '../helpers/codegraph.ts';
+import { stopWatching } from '../../extensions/codegraph/client.ts';
+import { getCodeGraph } from '../../extensions/codegraph/shared.ts';
+import { createCodeGraphTestFixture } from '../helpers/codegraph.ts';
 import plugin from '../../extensions/server.ts';
 import {
-    hasToolLifecycle,
-    hostSelect,
-    injectPromptText,
-    isOmpHost,
-    isOpencodeHost,
-    isPiHost,
-    onHostEvent,
-    sessionChangeEvents,
-    setExtensionLabel,
-    stringArrayToolParams,
+  hasToolLifecycle,
+  hostSelect,
+  injectPromptText,
+  isOmpHost,
+  isOpencodeHost,
+  isPiHost,
+  onHostEvent,
+  sessionChangeEvents,
+  setExtensionLabel,
+  stringArrayToolParams,
 } from '../../extensions/shared/host.ts';
 import {
-    getSharedComboState,
-    isOmpSubagentPrompt,
-    OMP_SUBAGENT_MARKER,
-    resetSharedComboState,
-    setSharedComboListener,
-    setSharedComboMode,
+  getSharedComboState,
+  isOmpSubagentPrompt,
+  OMP_SUBAGENT_MARKER,
+  resetSharedComboState,
+  setSharedComboListener,
+  setSharedComboMode,
 } from '../../extensions/shared/session-state.ts';
-import {formatStatus} from '../../extensions/shared/status.ts';
-import type {ExtensionApi, ExtensionCtx, SessionEntry, SystemPromptEvent} from '../../extensions/shared/types.ts';
-import {fakeRtkBin, withHome as inHome} from '../helpers/env.ts';
+import { formatStatus } from '../../extensions/shared/status.ts';
+import type { ExtensionApi, ExtensionCtx, SessionEntry, SystemPromptEvent } from '../../extensions/shared/types.ts';
+import { fakeRtkBin, withHome as inHome } from '../helpers/env.ts';
 
 // ponytail: hermetic HOME — session-start fallbacks read the real lock file, so the suite must not use it. fileURLToPath, not `.pathname`: a URL pathname on Windows is `/D:/...`, which path.join turns into `D:\D:\...`.
 process.env.HOME = fileURLToPath(new URL('../definitely-missing-home/session', import.meta.url));
@@ -536,11 +536,11 @@ function fakePi(sessionEntries: SessionEntry[] = []): TestPi {
     commands,
     handlers,
     zod: { z: { object: (shape) => shape, array: () => chain, string: () => chain } },
-    setLabel() { },
+    setLabel() {},
     registerCommand(name, config) {
       commands.set(name, config.handler);
     },
-    registerTool() { },
+    registerTool() {},
     on(event, handler) {
       handlers.set(event, handler);
     },
@@ -565,7 +565,7 @@ function context(entries: SessionEntry[] = [], hasUI = false): TestCtx {
         if (v !== undefined) notifications.push(v);
       },
     },
-    async reload() { },
+    async reload() {},
   };
 }
 
@@ -1136,15 +1136,15 @@ function mini(): Mini & { api: ExtensionApi } {
   const commands = new Map<string, Command>();
   const handlers = new Map<string, Handler>();
   const api = {
-    setLabel: () => { },
+    setLabel: () => {},
     registerCommand: (name: string, config: { handler: Command }) => {
       commands.set(name, config.handler);
     },
-    registerTool: () => { },
+    registerTool: () => {},
     on: (event: string, handler: Handler) => {
       handlers.set(event, handler);
     },
-    appendEntry: () => { },
+    appendEntry: () => {},
     exec: async () => ({ stdout: '', stderr: '', code: 0 }),
     zod: {
       z: {
@@ -1222,11 +1222,11 @@ test('/tersio no longer duplicates mode switches', async () => {
 function instance(): ExtensionApi {
   const chain = { min: () => chain, describe: () => chain };
   return {
-    setLabel() { },
-    registerCommand() { },
-    registerTool() { },
-    appendEntry() { },
-    on() { },
+    setLabel() {},
+    registerCommand() {},
+    registerTool() {},
+    appendEntry() {},
+    on() {},
     zod: { z: { object: (shape: Record<string, unknown>) => shape, array: () => chain, string: () => chain } },
   } as unknown as ExtensionApi;
 }
@@ -1309,7 +1309,7 @@ interface FakePi {
 
 const createPi = (): FakePi => {
   const commands = new Map<string, handlerReturnsHandler>();
-  const noop = (): void => { };
+  const noop = (): void => {};
   return {
     commands,
     registerCommand(name, config) {
@@ -1329,7 +1329,7 @@ const createPi = (): FakePi => {
   };
 };
 
-const ctx = { hasUI: false, ui: { notify: (): void => { } }, cwd: root, sessionManager: { getBranch: () => [] } };
+const ctx = { hasUI: false, ui: { notify: (): void => {} }, cwd: root, sessionManager: { getBranch: () => [] } };
 
 // A resolved value starts a model turn, so a handler that already printed everything must resolve undefined.
 test('no tersio command handler resolves a value', async () => {
@@ -1653,10 +1653,10 @@ function harness(_entries: SessionEntry[]): { handlers: Map<string, restoreEvent
   const notifications: string[] = [];
   const chain = { min: () => chain, describe: () => chain };
   rtkSessionExtension({
-    setLabel() { },
-    registerCommand() { },
-    registerTool() { },
-    appendEntry() { },
+    setLabel() {},
+    registerCommand() {},
+    registerTool() {},
+    appendEntry() {},
     on(event: string, handler: restoreEventHandler) {
       handlers.set(event, handler);
     },
@@ -1712,9 +1712,9 @@ function firstRunHarness(
   const pi = {
     // The injected zod is how the extensions recognise an OMP host.
     zod: { z: {} },
-    setLabel: () => { },
-    registerCommand: () => { },
-    registerTool: () => { },
+    setLabel: () => {},
+    registerCommand: () => {},
+    registerTool: () => {},
     on: (event: string, handler: (event: unknown, ctx: ExtensionCtx) => Promise<unknown>) => {
       handlers.set(event, handler);
     },
@@ -1730,8 +1730,8 @@ function firstRunHarness(
         prompts.push(title);
         return selection;
       },
-      setStatus: () => { },
-      notify: () => { },
+      setStatus: () => {},
+      notify: () => {},
     },
   } as unknown as ExtensionCtx;
   comboToggleExtension(pi);
@@ -1981,11 +1981,11 @@ function statusFakePi(entries: SessionEntry[] = []): statusTestPi {
     handlers,
     // Present `zod` marks this as the OMP host; without it the fake reads as pi and skips the shared events.
     zod: { z: { object: (shape) => shape, array: () => chain, string: () => chain } },
-    setLabel() { },
+    setLabel() {},
     registerCommand(name, config) {
       commands.set(name, config.handler);
     },
-    registerTool() { },
+    registerTool() {},
     on(event, handler) {
       handlers.set(event, handler);
     },
@@ -2009,7 +2009,7 @@ function statusContext(entries: SessionEntry[] = [], hasUI = true): statusTestCt
         if (value !== undefined) notifications.push(value);
       },
     },
-    async reload() { },
+    async reload() {},
   };
 }
 
@@ -2209,13 +2209,13 @@ type tersioHandler = (args: string, ctx: ExtensionCtx) => Promise<void>;
 function tersioHarness(
   execImpl?: (cmd: string, args: string[]) => Promise<{ stdout: string; stderr: string; code: number }>,
 ) {
-  let capturedHandler: tersioHandler = async () => { };
+  let capturedHandler: tersioHandler = async () => {};
   const appended: Array<{ type: string; data: Record<string, unknown> }> = [];
   const notifications: string[] = [];
   const execCalls: Array<{ cmd: string; args: string[] }> = [];
   let reloaded = 0;
   tersioCommandsExtension({
-    setLabel() { },
+    setLabel() {},
     registerCommand(_name: string, config: { handler: tersioHandler }) {
       capturedHandler = config.handler;
     },
@@ -2232,7 +2232,7 @@ function tersioHarness(
     hasUI: true,
     sessionManager: { getBranch: () => [] },
     ui: {
-      setStatus() { },
+      setStatus() {},
       notify(m: string) {
         notifications.push(m);
       },

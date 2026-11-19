@@ -1,16 +1,16 @@
-import {describe, expect, test} from 'vitest';
-import {spawnSync} from 'node:child_process';
-import {chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import { describe, expect, test } from 'vitest';
+import { spawnSync } from 'node:child_process';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
-import {createRequire} from 'node:module';
+import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
-import {bannerLines, bannerTier} from '../../cli/banner.ts';
-import type {HostEntry} from '../../cli/hosts.ts';
-import {detectHosts, hostLabel} from '../../cli/hosts.ts';
-import {cliEnv, fakeRtkBin} from '../helpers/env.ts';
-import {registryUrl, releasesUrl} from '../helpers/registry.ts';
+import { bannerLines, bannerTier } from '../../cli/banner.ts';
+import type { HostEntry } from '../../cli/hosts.ts';
+import { detectHosts, hostLabel } from '../../cli/hosts.ts';
+import { cliEnv, fakeRtkBin } from '../helpers/env.ts';
+import { registryUrl, releasesUrl } from '../helpers/registry.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const installer = path.join(root, 'dist', 'tersio.js');

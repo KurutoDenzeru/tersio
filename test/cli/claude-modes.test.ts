@@ -1,10 +1,10 @@
 // Guards the slash-command output: one line, no write path, and a combo label that admits a hand-set mode.
-import {mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {afterEach, describe, expect, test} from 'vitest';
-import {runModes} from '../../cli/modes.ts';
-import {saveHostDefaults, storedProfile} from '../../cli/profile.ts';
+import { afterEach, describe, expect, test } from 'vitest';
+import { runModes } from '../../cli/modes.ts';
+import { saveHostDefaults, storedProfile } from '../../cli/profile.ts';
 
 const savedHome = process.env.HOME;
 const savedTersioHome = process.env.TERSIO_HOME;
@@ -88,7 +88,7 @@ test('CodeGraph mode is limited to hosts that load its extension', async () => {
   const oldError = console.error;
   const oldExitCode = process.exitCode;
   const errors: string[] = [];
-  console.log = () => { };
+  console.log = () => {};
   console.error = (...args: unknown[]) => errors.push(args.map(String).join(' '));
   try {
     mkdirSync(tersioHome, { recursive: true });

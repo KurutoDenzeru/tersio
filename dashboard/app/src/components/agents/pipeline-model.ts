@@ -603,7 +603,7 @@ export const OFF_DEFAULTS: DefaultsPayload = {
   ponytailDefault: "off",
   pstackDefault: "off",
   headroomDefault: "off",
-  codegraphDefault: "off",
+  codegraphDefault: "on",
   codegraphSync: "live",
 }
 

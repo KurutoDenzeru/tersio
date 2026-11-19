@@ -1,19 +1,19 @@
 import http from 'node:http';
-import {existsSync, readFileSync} from 'node:fs';
-import {execFileSync, spawn} from 'node:child_process';
-import {afterEach, describe, expect, test} from 'vitest';
-import {headroomHostDurable, headroomHostSupported} from '../../extensions/shared/headroom-proxy.ts';
-import {cacheGet} from '../../extensions/shared/cache-store.ts';
+import { existsSync, readFileSync } from 'node:fs';
+import { execFileSync, spawn } from 'node:child_process';
+import { afterEach, describe, expect, test } from 'vitest';
+import { headroomHostDurable, headroomHostSupported } from '../../extensions/shared/headroom-proxy.ts';
+import { cacheGet } from '../../extensions/shared/cache-store.ts';
 import {
-    headroomFitsMachine,
-    headroomProxyPids,
-    headroomProxyPort,
-    headroomProxyUrl,
-    headroomRuntimeUp,
-    proxyArgsForDeployment,
-    reapProxies,
-    releaseHeadroomLease,
-    touchHeadroomLease,
+  headroomFitsMachine,
+  headroomProxyPids,
+  headroomProxyPort,
+  headroomProxyUrl,
+  headroomRuntimeUp,
+  proxyArgsForDeployment,
+  reapProxies,
+  releaseHeadroomLease,
+  touchHeadroomLease,
 } from '../../extensions/shared/headroom-runtime.ts';
 
 describe('headroom runtime', () => {

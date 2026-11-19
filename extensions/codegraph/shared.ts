@@ -3,14 +3,20 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import {createRequire} from 'node:module';
-import {homeDir, tersioHome} from '../shared/utils.ts';
-import type {CodegraphSyncMode, HostScope} from '../shared/plugin-settings.ts';
-import {readCodegraphDefault, readCodegraphSync} from '../shared/plugin-settings.ts';
-import type {CallerResult, CodeGraphStats, CodeGraphStatus, ExploreResult, ImpactRadiusResult, Node} from './types.ts';
+import { createRequire } from 'node:module';
+import { homeDir, tersioHome } from '../shared/utils.ts';
+import type { CodegraphSyncMode, HostScope } from '../shared/plugin-settings.ts';
+import { readCodegraphDefault, readCodegraphSync } from '../shared/plugin-settings.ts';
+import type {
+  CallerResult,
+  CodeGraphStats,
+  CodeGraphStatus,
+  ExploreResult,
+  ImpactRadiusResult,
+  Node,
+} from './types.ts';
 
 const require = createRequire(import.meta.url);
-
 
 // Dynamic type for upstream CodeGraph instance
 interface UpstreamCodeGraph {
@@ -48,10 +54,14 @@ export function resolveCodeGraphLibrary(): string | null {
   const bundled = [
     newestBundledLibrary(path.join(tersioHome(), 'codegraph', 'bundles'), target),
     newestBundledLibrary(path.join(homeDir(), '.codegraph', 'bundles'), target),
-  ].filter((lib): lib is string => lib !== null).toSorted((a, b) => compareVersions(
-    path.basename(path.resolve(b, '..', '..', '..')).slice(target.length + 1),
-    path.basename(path.resolve(a, '..', '..', '..')).slice(target.length + 1),
-  ));
+  ]
+    .filter((lib): lib is string => lib !== null)
+    .toSorted((a, b) =>
+      compareVersions(
+        path.basename(path.resolve(b, '..', '..', '..')).slice(target.length + 1),
+        path.basename(path.resolve(a, '..', '..', '..')).slice(target.length + 1),
+      ),
+    );
   if (bundled[0]) return bundled[0];
 
   // Also check if installed in node_modules
@@ -102,7 +112,7 @@ function compareVersions(a: string, b: string): number {
 export function findRepoRoot(start = process.cwd()): string | null {
   const home = path.resolve(homeDir());
   let dir = path.resolve(start);
-  for (; ;) {
+  for (;;) {
     if (fs.existsSync(path.join(dir, '.git'))) {
       return dir === home || path.dirname(dir) === dir ? null : dir;
     }
@@ -132,7 +142,6 @@ export function hasCodeGraphIndex(projectRoot = process.cwd()): boolean {
   }
 }
 
-
 /**
  * Open or initialize CodeGraph for the git repository holding a project directory.
  */
@@ -143,7 +152,6 @@ export async function getCodeGraph(projectRoot = process.cwd(), autoInit = true)
       'CodeGraph bundle is not installed. Install via npm: npm i -g @colbymchenry/codegraph or run `codegraph` once.',
     );
   }
-
 
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const mod = require(lib) as { CodeGraph: UpstreamCodeGraphClass };

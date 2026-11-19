@@ -1,8 +1,8 @@
 // Fixtures for the three schemas the aggregate reads: the usage store, omp's quota db, and a session journal.
-import {mkdirSync, writeFileSync} from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-import {sqliteExec} from '../../extensions/shared/sqlite.ts';
+import { sqliteExec } from '../../extensions/shared/sqlite.ts';
 
 /** The usage store, as `usage-store.ts` writes it. */
 const STORE_SCHEMA = `

@@ -1,8 +1,8 @@
 // One settings file for every host; parse failure yields {} with per-caller defaults.
 
-import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import {homeDir, tersioHome} from './utils.ts';
+import { homeDir, tersioHome } from './utils.ts';
 
 export const PLUGIN_NAME = '@krtclcdy/tersio';
 
@@ -252,13 +252,20 @@ export function saveComboSetup(level: string, host?: HostScope | null): boolean 
   // A host scope writes its own section, so this agent's preset never becomes every agent's.
   const next = host
     ? {
-      ...stored,
-      hosts: {
-        ...(stored.hosts as Record<string, unknown> | undefined),
-        [host]: { ...hostDefaults(host), ...patch },
-      },
-    }
+        ...stored,
+        hosts: {
+          ...(stored.hosts as Record<string, unknown> | undefined),
+          [host]: { ...hostDefaults(host), ...patch },
+        },
+      }
     : { ...stored, ...patch };
   writeFileSync(file, `${JSON.stringify({ ...next, comboSetupComplete: true }, null, 2)}\n`, 'utf8');
   return true;
+}
+
+/** The agents that load the CodeGraph extension; one list for the CLI, the dashboard, MCP and the installer. */
+export const CODEGRAPH_HOSTS = ['omp', 'pi', 'pig', 'opencode'] as const;
+
+export function supportsCodegraph(host: string): boolean {
+  return (CODEGRAPH_HOSTS as readonly string[]).includes(host);
 }

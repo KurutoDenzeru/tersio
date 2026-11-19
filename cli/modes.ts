@@ -1,26 +1,23 @@
 // `/prompts:*` and the shell fallback read and write the same session defaults as the MCP tool.
 import {
-    CAVEMAN_DEFAULTS,
-    CODEGRAPH_DEFAULTS,
-    COMBO_DEFAULTS,
-    HEADROOM_DEFAULTS,
-    PONYTAIL_DEFAULTS,
-    PSTACK_DEFAULTS,
-    RTK_DEFAULTS,
+  CAVEMAN_DEFAULTS,
+  CODEGRAPH_DEFAULTS,
+  COMBO_DEFAULTS,
+  HEADROOM_DEFAULTS,
+  PONYTAIL_DEFAULTS,
+  PSTACK_DEFAULTS,
+  RTK_DEFAULTS,
 } from './common.ts';
-import {parseHostArg} from './hosts.ts';
-import type {HostDefaultField, Profile} from './profile.ts';
-import {applyComboPreset, formatProfile, saveHostDefaults, storedProfile, writePluginSettings} from './profile.ts';
-import {normalizeMode} from '../extensions/shared/session-state.ts';
-import type {HostId} from '../extensions/shared/host-caps.ts';
-import {CODEGRAPH_SYNC_MODES, type CodegraphSyncMode} from '../extensions/shared/plugin-settings.ts';
-
-const CODEGRAPH_HOSTS: Readonly<Partial<Record<HostId, true>>> = {
-  omp: true,
-  pi: true,
-  pig: true,
-  opencode: true,
-};
+import { parseHostArg } from './hosts.ts';
+import type { HostDefaultField, Profile } from './profile.ts';
+import { applyComboPreset, formatProfile, saveHostDefaults, storedProfile, writePluginSettings } from './profile.ts';
+import { normalizeMode } from '../extensions/shared/session-state.ts';
+import type { HostId } from '../extensions/shared/host-caps.ts';
+import {
+  CODEGRAPH_SYNC_MODES,
+  type CodegraphSyncMode,
+  supportsCodegraph,
+} from '../extensions/shared/plugin-settings.ts';
 
 type ModeName = 'combo' | 'caveman' | 'rtk' | 'ponytail' | 'pstack' | 'headroom' | 'codegraph' | 'codegraph-sync';
 const MODES = new Set<ModeName>([
@@ -73,7 +70,7 @@ export async function runModes(argv: string[]): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  if (mode === 'codegraph' && host && !CODEGRAPH_HOSTS[host]) {
+  if (mode === 'codegraph' && host && !supportsCodegraph(host)) {
     console.error(`[fail] codegraph is not supported for ${host}`);
     process.exitCode = 1;
     return;

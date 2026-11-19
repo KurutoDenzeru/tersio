@@ -2,47 +2,47 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {sqliteExec, sqliteRead} from './sqlite.ts';
+import { sqliteExec, sqliteRead } from './sqlite.ts';
 import type {
-    OpencodeClassification,
-    OpencodeDbRow,
-    OpencodeMessage,
-    RunStatus,
-    SessionLineRow,
-    SessionTokens,
-    ToolFact,
+  OpencodeClassification,
+  OpencodeDbRow,
+  OpencodeMessage,
+  RunStatus,
+  SessionLineRow,
+  SessionTokens,
+  ToolFact,
 } from './usage-ledger.ts';
 import {
-    agentOfSessionText,
-    canonicalModelId,
-    classifyOpencodeMessage,
-    classifySessionLine,
-    type ClaudeParseState,
-    collectToolResults,
-    costOf,
-    type DshParseState,
-    dshSessionFiles,
-    durOf,
-    hostOfSessionFile,
-    ingestSessionRow,
-    messageRowId,
-    newSessionAccum,
-    OPENCODE_DB_OVERLAP_MS,
-    opencodeDbPath,
-    opencodeSessionsDir,
-    opencodeToolNames,
-    readOpencodeDbRows,
-    readSessionText,
-    RECENT_LIMIT,
-    sessionsDirs,
-    usdCost,
-    walkJsonl,
+  agentOfSessionText,
+  canonicalModelId,
+  classifyOpencodeMessage,
+  classifySessionLine,
+  type ClaudeParseState,
+  collectToolResults,
+  costOf,
+  type DshParseState,
+  dshSessionFiles,
+  durOf,
+  hostOfSessionFile,
+  ingestSessionRow,
+  messageRowId,
+  newSessionAccum,
+  OPENCODE_DB_OVERLAP_MS,
+  opencodeDbPath,
+  opencodeSessionsDir,
+  opencodeToolNames,
+  readOpencodeDbRows,
+  readSessionText,
+  RECENT_LIMIT,
+  sessionsDirs,
+  usdCost,
+  walkJsonl,
 } from './usage-ledger.ts';
-import {tersioDataPath} from './utils.ts';
-import {createDataBackup, newestDataBackup, readSnapshotMember, restoreSnapshotMember} from './snapshots.ts';
-import {MODEL_ALIASES} from './pricing.ts';
-import {readRetentionDays, tersioSettingsFile} from './plugin-settings.ts';
-import {codexModelIdentity, looksLikeCodexTranscript, parseCodexTranscript} from './codex-transcript.ts';
+import { tersioDataPath } from './utils.ts';
+import { createDataBackup, newestDataBackup, readSnapshotMember, restoreSnapshotMember } from './snapshots.ts';
+import { MODEL_ALIASES } from './pricing.ts';
+import { readRetentionDays, tersioSettingsFile } from './plugin-settings.ts';
+import { codexModelIdentity, looksLikeCodexTranscript, parseCodexTranscript } from './codex-transcript.ts';
 
 export function usageDbPath(): string {
   const override = process.env.TERSIO_USAGE_DB;
@@ -118,13 +118,13 @@ function pragmas(db: string): void {
   run(
     db,
     'PRAGMA journal_mode=WAL;' +
-    'PRAGMA synchronous=NORMAL;' +
-    'PRAGMA wal_autocheckpoint=256;' +
-    'PRAGMA cache_size=-8000;' +
-    'PRAGMA temp_store=MEMORY;' +
-    'PRAGMA mmap_size=268435456;' +
-    // Cheap unless the planner's statistics are stale, and it keeps range queries on the right index.
-    'PRAGMA optimize;',
+      'PRAGMA synchronous=NORMAL;' +
+      'PRAGMA wal_autocheckpoint=256;' +
+      'PRAGMA cache_size=-8000;' +
+      'PRAGMA temp_store=MEMORY;' +
+      'PRAGMA mmap_size=268435456;' +
+      // Cheap unless the planner's statistics are stale, and it keeps range queries on the right index.
+      'PRAGMA optimize;',
   );
 }
 
@@ -211,16 +211,16 @@ function migrateInPlace(db: string, preCount: number): boolean {
     run(
       db,
       `BEGIN;` +
-      `CREATE TABLE files_new (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT UNIQUE NOT NULL, mtime REAL NOT NULL, size INTEGER NOT NULL);` +
-      `INSERT INTO files_new (path, mtime, size) SELECT path, mtime, size FROM files;` +
-      `CREATE TABLE messages_new (file_id INTEGER NOT NULL REFERENCES files_new(id), t REAL, model TEXT NOT NULL,` +
-      ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, tf REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
-      ` usd REAL, usd_estimated INTEGER NOT NULL DEFAULT 0, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, a TEXT, id TEXT, tc TEXT, cwd TEXT);` +
-      `INSERT INTO messages_new (file_id, ${cols}) SELECT (SELECT id FROM files_new WHERE files_new.path = messages.file), ${cols} FROM messages;` +
-      `DROP TABLE messages;DROP TABLE files;` +
-      `ALTER TABLE files_new RENAME TO files;ALTER TABLE messages_new RENAME TO messages;` +
-      `CREATE INDEX idx_messages_file ON messages(file_id);` +
-      `COMMIT;`,
+        `CREATE TABLE files_new (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT UNIQUE NOT NULL, mtime REAL NOT NULL, size INTEGER NOT NULL);` +
+        `INSERT INTO files_new (path, mtime, size) SELECT path, mtime, size FROM files;` +
+        `CREATE TABLE messages_new (file_id INTEGER NOT NULL REFERENCES files_new(id), t REAL, model TEXT NOT NULL,` +
+        ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, tf REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
+        ` usd REAL, usd_estimated INTEGER NOT NULL DEFAULT 0, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, a TEXT, id TEXT, tc TEXT, cwd TEXT);` +
+        `INSERT INTO messages_new (file_id, ${cols}) SELECT (SELECT id FROM files_new WHERE files_new.path = messages.file), ${cols} FROM messages;` +
+        `DROP TABLE messages;DROP TABLE files;` +
+        `ALTER TABLE files_new RENAME TO files;ALTER TABLE messages_new RENAME TO messages;` +
+        `CREATE INDEX idx_messages_file ON messages(file_id);` +
+        `COMMIT;`,
     );
   } catch {
     return false;
@@ -489,8 +489,8 @@ function ensureSchema(db: string, forceWipe: boolean): void {
     run(
       db,
       `DROP TABLE IF EXISTS messages;DROP TABLE IF EXISTS files;` +
-      SCHEMA_SQL +
-      `INSERT OR REPLACE INTO meta (k,v) VALUES ('parser_version','${PARSER_VERSION}');`,
+        SCHEMA_SQL +
+        `INSERT OR REPLACE INTO meta (k,v) VALUES ('parser_version','${PARSER_VERSION}');`,
     );
     return;
   }
@@ -924,8 +924,8 @@ export function syncUsageDb(): boolean {
     if (
       !push(
         `INSERT INTO files (path, mtime, size) VALUES (${esc(file)},${entry.mtime},${entry.size})` +
-        ` ON CONFLICT(path) DO UPDATE SET mtime=excluded.mtime,size=excluded.size;` +
-        `DELETE FROM messages WHERE file_id=(SELECT id FROM files WHERE path=${esc(file)});`,
+          ` ON CONFLICT(path) DO UPDATE SET mtime=excluded.mtime,size=excluded.size;` +
+          `DELETE FROM messages WHERE file_id=(SELECT id FROM files WHERE path=${esc(file)});`,
       )
     )
       return false;
@@ -947,9 +947,9 @@ export function syncUsageDb(): boolean {
       if (
         !push(
           `INSERT INTO files (path, mtime, size) VALUES (${esc(key)},${row.created},0)` +
-          ` ON CONFLICT(path) DO UPDATE SET mtime=excluded.mtime;` +
-          `DELETE FROM messages WHERE file_id=(SELECT id FROM files WHERE path=${esc(key)});` +
-          insertSql(key, opencodeStoredRow(parsed, 'opencode', row.id, opencodeToolNames(row.row, row.tools))),
+            ` ON CONFLICT(path) DO UPDATE SET mtime=excluded.mtime;` +
+            `DELETE FROM messages WHERE file_id=(SELECT id FROM files WHERE path=${esc(key)});` +
+            insertSql(key, opencodeStoredRow(parsed, 'opencode', row.id, opencodeToolNames(row.row, row.tools))),
         )
       )
         return false;

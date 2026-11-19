@@ -1,13 +1,13 @@
 // One MCP server for every Tersio host. Retrieval, modes, and stats live in `tersio mcp`; no
 // second Headroom MCP entry is installed.
 
-import fs, {realpathSync} from 'node:fs';
+import fs, { realpathSync } from 'node:fs';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
-import {HOST_CAPS, hostCap} from './host-caps.ts';
-import {stripJsonComments} from './headroom-routing.ts';
-import {findTopLevelKey, spliceNestedKey, spliceTopLevelKey} from './jsonc-edit.ts';
-import {findPackageRoot, resolveHostBinary} from './utils.ts';
+import { fileURLToPath } from 'node:url';
+import { HOST_CAPS, hostCap } from './host-caps.ts';
+import { stripJsonComments } from './headroom-routing.ts';
+import { findTopLevelKey, spliceNestedKey, spliceTopLevelKey } from './jsonc-edit.ts';
+import { findPackageRoot, resolveHostBinary } from './utils.ts';
 
 export { spliceTopLevelKey } from './jsonc-edit.ts';
 

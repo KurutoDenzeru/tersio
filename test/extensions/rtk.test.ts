@@ -1,27 +1,27 @@
 // Zero coverage once shipped a crashing tool call; keep it covered. Every failure path must keep the original output: a wrong filtered result is worse.
-import {expect, test} from 'vitest';
-import {chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
-import os, {tmpdir} from 'node:os';
+import { expect, test } from 'vitest';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import os, { tmpdir } from 'node:os';
 import path from 'node:path';
-import {fileURLToPath, pathToFileURL} from 'node:url';
-import type {FilterExec} from '../../extensions/rtk/filter.ts';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import type { FilterExec } from '../../extensions/rtk/filter.ts';
 import rtkFilterExtension, {
-    FILTER_BY_TOOL,
-    filterableText,
-    filterShell,
-    filterThroughRtk,
-    MIN_FILTER_BYTES,
-    rtkActive,
+  FILTER_BY_TOOL,
+  filterableText,
+  filterShell,
+  filterThroughRtk,
+  MIN_FILTER_BYTES,
+  rtkActive,
 } from '../../extensions/rtk/filter.ts';
 import rtkSessionExtension from '../../extensions/rtk/session.ts';
 import timingExtension from '../../extensions/timing/index.ts';
-import {resetSharedComboState, setSharedComboMode} from '../../extensions/shared/session-state.ts';
-import type {ExtensionApi, ExtensionCtx, SessionEntry, ToolResultEvent} from '../../extensions/shared/types.ts';
-import {readRtkGain, readRtkGainByVerb, rtkDbPath, rtkGainFailure} from '../../extensions/shared/rtk-gain.ts';
-import {wireRtk} from '../../cli/rtk-wiring.ts';
-import {findFile, resolveRtkBinary, shimCommand} from '../../extensions/shared/utils.ts';
-import {sqliteExec} from '../../extensions/shared/sqlite.ts';
-import {fakeRtkBin, hasSqlite, withHome as inHome} from '../helpers/env.ts';
+import { resetSharedComboState, setSharedComboMode } from '../../extensions/shared/session-state.ts';
+import type { ExtensionApi, ExtensionCtx, SessionEntry, ToolResultEvent } from '../../extensions/shared/types.ts';
+import { readRtkGain, readRtkGainByVerb, rtkDbPath, rtkGainFailure } from '../../extensions/shared/rtk-gain.ts';
+import { wireRtk } from '../../cli/rtk-wiring.ts';
+import { findFile, resolveRtkBinary, shimCommand } from '../../extensions/shared/utils.ts';
+import { sqliteExec } from '../../extensions/shared/sqlite.ts';
+import { fakeRtkBin, hasSqlite, withHome as inHome } from '../helpers/env.ts';
 
 // The filter spawns a shell for the `<` redirect, and Windows has no /bin/sh.
 const SHELL_INFO = filterShell();
@@ -66,10 +66,10 @@ type Handler = (event: ToolResultEvent, ctx: ExtensionCtx) => Promise<unknown>;
 function harness(exec: FilterExec | undefined, entries: Entries = []) {
   const handlers = new Map<string, Handler>();
   const api: Record<string, unknown> = {
-    setLabel() { },
-    registerCommand() { },
-    registerTool() { },
-    appendEntry() { },
+    setLabel() {},
+    registerCommand() {},
+    registerTool() {},
+    appendEntry() {},
     on(event: string, handler: Handler) {
       handlers.set(event, handler);
     },
@@ -172,9 +172,10 @@ test('missing RTK blocks active bash calls but keeps native and mode-off calls u
 
     const native = { toolName: 'read', input: { command: 'git status' } };
     await expect(h.call(native)).resolves.toBeUndefined();
-    const off = harness(async () => ({ stdout: '', stderr: '', code: 0 }), [
-      { type: 'custom', customType: 'rtk-mode', data: { enabled: false } },
-    ]);
+    const off = harness(
+      async () => ({ stdout: '', stderr: '', code: 0 }),
+      [{ type: 'custom', customType: 'rtk-mode', data: { enabled: false } }],
+    );
     await expect(off.call(event)).resolves.toBeUndefined();
   });
 });
@@ -335,10 +336,10 @@ test('a host without a tool lifecycle registers no shell hook', async () => {
     const handlers = new Map<string, Handler>();
     const api: Record<string, unknown> = {
       hostId: 'opencode',
-      setLabel() { },
-      registerCommand() { },
-      registerTool() { },
-      appendEntry() { },
+      setLabel() {},
+      registerCommand() {},
+      registerTool() {},
+      appendEntry() {},
       on(event: string, handler: Handler) {
         handlers.set(event, handler);
       },
@@ -699,10 +700,10 @@ async function rewiredCommand(
     let call: { input: { command: string } } | undefined;
     let settled: Promise<unknown> | undefined;
     const api = {
-      setLabel() { },
-      registerCommand() { },
-      registerTool() { },
-      appendEntry() { },
+      setLabel() {},
+      registerCommand() {},
+      registerTool() {},
+      appendEntry() {},
       // The hook rewrites via `rtk rewrite`, so `exec` must accept a timeout and signal and report a kill.
       async exec(cmd: string, args: string[], opts?: { timeout?: number; signal?: AbortSignal }) {
         const { execFile } = await import('node:child_process');
@@ -850,12 +851,12 @@ function rtkToolHarness(
   const handlers = new Map<string, (event: unknown, ctx: ExtensionCtx | undefined) => Promise<unknown>>();
   const chain = { min: () => chain, describe: () => chain };
   const api: Record<string, unknown> = {
-    setLabel() { },
-    registerCommand() { },
+    setLabel() {},
+    registerCommand() {},
     registerTool(t: Tool) {
       tool = t;
     },
-    appendEntry() { },
+    appendEntry() {},
     on(event: string, handler: (event: unknown, ctx: ExtensionCtx | undefined) => Promise<unknown>) {
       handlers.set(event, handler);
     },
@@ -867,7 +868,7 @@ function rtkToolHarness(
   const ctx = {
     hasUI: true,
     sessionManager: { getBranch: () => entries },
-    ui: { setStatus() { }, notify() { } },
+    ui: { setStatus() {}, notify() {} },
   } as ExtensionCtx;
   const sessionStart = () => handlers.get('session_start')!({}, ctx);
   return { tool: tool!, ctx, events: [...handlers.keys()], sessionStart };

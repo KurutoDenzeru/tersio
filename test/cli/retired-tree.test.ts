@@ -1,8 +1,8 @@
-import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import {expect, test} from 'vitest';
-import {isObsoleteTreeFile, reapObsoleteTreeDirs} from '../../cli/manifest.ts';
-import {withHome} from '../helpers/env.ts';
+import { expect, test } from 'vitest';
+import { isObsoleteTreeFile, reapObsoleteTreeDirs } from '../../cli/manifest.ts';
+import { withHome } from '../helpers/env.ts';
 
 test('install cleanup removes the retired WordPress resolver and preserves neighboring graph extensions', async () => {
   await withHome(async (home) => {

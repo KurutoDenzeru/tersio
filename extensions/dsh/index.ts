@@ -1,13 +1,13 @@
 // Tersio on DeepSeek Harness: modes as always-on system-prompt sections; imports stay relative for Node type stripping.
-import {existsSync, readFileSync, writeFileSync} from 'node:fs';
-import {exec} from 'node:child_process';
-import type {IncomingMessage, ServerResponse} from 'node:http';
-import {dirname, join} from 'node:path';
-import {fileURLToPath} from 'node:url';
-import {promisify} from 'node:util';
-import {homeDir, resolveRtkBinary, tersioHome} from '../shared/utils.ts';
-import {formatModeLine, MODE_GLYPHS, type ModeSnapshot} from '../shared/mode-notice.ts';
-import {rewriteThroughRtk, rewriteToolArguments} from '../shared/rtk-rewrite.ts';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { exec } from 'node:child_process';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
+import { homeDir, resolveRtkBinary, tersioHome } from '../shared/utils.ts';
+import { formatModeLine, MODE_GLYPHS, type ModeSnapshot } from '../shared/mode-notice.ts';
+import { rewriteThroughRtk, rewriteToolArguments } from '../shared/rtk-rewrite.ts';
 
 const execShellP = promisify(exec);
 const HERE = dirname(fileURLToPath(import.meta.url));

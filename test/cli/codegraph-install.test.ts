@@ -1,11 +1,11 @@
-import {existsSync, readdirSync, readFileSync, writeFileSync} from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-import {expect, test} from 'vitest';
+import { expect, test } from 'vitest';
 
-import {installCodeGraphBundle} from '../../extensions/codegraph/install.ts';
-import {resolveCodeGraphLibrary} from '../../extensions/codegraph/shared.ts';
-import {fakeExecutable, withHome} from '../helpers/env.ts';
+import { installCodeGraphBundle } from '../../extensions/codegraph/install.ts';
+import { resolveCodeGraphLibrary } from '../../extensions/codegraph/shared.ts';
+import { fakeExecutable, withHome } from '../helpers/env.ts';
 
 const version = '1.2.3';
 const target = `${process.platform}-${process.arch}`;
@@ -20,7 +20,9 @@ interface FakeNpm {
 
 function fakeNpm(home: string): FakeNpm {
   const script = path.join(home, 'fake-npm.js');
-  writeFileSync(script, `
+  writeFileSync(
+    script,
+    `
 const fs = require('node:fs');
 const path = require('node:path');
 if (process.env.CODEGRAPH_NPM_MODE === 'fail') process.exit(17);
@@ -39,7 +41,9 @@ fs.writeFileSync(
   process.env.CODEGRAPH_NPM_MODE === 'smoke' ? 'module.exports = { CodeGraph: {} };' : 'module.exports = { CodeGraph: class { static async init() { return new this(); } static async open() {} async indexAll() {} async sync() {} async getStats() { return { fileCount: 1 }; } async getNodesByName() {} async getCallers() {} async getImpactRadius() {} watch() {} unwatch() {} close() {} } };',
 );
 fs.copyFileSync(process.execPath, path.join(root, '${process.platform === 'win32' ? 'node.exe' : 'node'}'));
-`, 'utf8');
+`,
+    'utf8',
+  );
 
   const quotePosix = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
   const quoteCmd = (value: string): string => `"${value.replaceAll('"', '""')}"`;
@@ -50,7 +54,12 @@ fs.copyFileSync(process.execPath, path.join(root, '${process.platform === 'win32
     `exec ${quotePosix(process.execPath)} ${quotePosix(script)} "$@"`,
     `${quoteCmd(process.execPath)} ${quoteCmd(script)} %*`,
   );
-  return { bin, setMode: (mode) => { process.env.CODEGRAPH_NPM_MODE = mode; } };
+  return {
+    bin,
+    setMode: (mode) => {
+      process.env.CODEGRAPH_NPM_MODE = mode;
+    },
+  };
 }
 
 async function withFakeNpm<T>(run: (home: string, bundlesDir: string, npm: FakeNpm) => Promise<T>): Promise<T> {

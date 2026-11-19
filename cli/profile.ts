@@ -1,27 +1,27 @@
 // cli/profile.ts — session-start defaults and the display-currency default,
-import {existsSync, promises as fs, readFileSync} from 'node:fs';
+import { existsSync, promises as fs, readFileSync } from 'node:fs';
 import path from 'node:path';
-import type {WriteOptions} from './common.ts';
+import type { WriteOptions } from './common.ts';
 import {
-    ACCENT_DEFAULTS,
-    CAVEMAN_DEFAULTS,
-    CODEGRAPH_DEFAULTS,
-    COMBO_PRESET_MODES,
-    HEADROOM_DEFAULTS,
-    PACKAGE_NAME,
-    PONYTAIL_DEFAULTS,
-    PSTACK_DEFAULTS,
-    verbose,
+  ACCENT_DEFAULTS,
+  CAVEMAN_DEFAULTS,
+  CODEGRAPH_DEFAULTS,
+  COMBO_PRESET_MODES,
+  HEADROOM_DEFAULTS,
+  PACKAGE_NAME,
+  PONYTAIL_DEFAULTS,
+  PSTACK_DEFAULTS,
+  verbose,
 } from './common.ts';
 import os from 'node:os';
-import type {CurrencyCode} from './currency.ts';
-import {DEFAULT_CURRENCY, isCurrencyCode} from './currency.ts';
-import {recordActivity} from './activity.ts';
-import type {HostId} from '../extensions/shared/host-caps.ts';
-import {readTextIfExists} from '../extensions/shared/utils.ts';
-import type {CodegraphSyncMode} from '../extensions/shared/plugin-settings.ts';
-import {CODEGRAPH_SYNC_MODES, tersioSettingsFile} from '../extensions/shared/plugin-settings.ts';
-import {setClaudeRtkHook} from '../extensions/shared/claude-state.ts';
+import type { CurrencyCode } from './currency.ts';
+import { DEFAULT_CURRENCY, isCurrencyCode } from './currency.ts';
+import { recordActivity } from './activity.ts';
+import type { HostId } from '../extensions/shared/host-caps.ts';
+import { readTextIfExists } from '../extensions/shared/utils.ts';
+import type { CodegraphSyncMode } from '../extensions/shared/plugin-settings.ts';
+import { CODEGRAPH_SYNC_MODES, tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
+import { setClaudeRtkHook } from '../extensions/shared/claude-state.ts';
 
 function readTextIfExistsSync(file: string): string | null {
   try {
@@ -123,7 +123,6 @@ function applyStored(base: Profile, stored: StoredSettings): void {
   if (typeof stored.comboDefault === 'string' && stored.comboDefault in COMBO_PRESET_MODES)
     base.comboDefault = stored.comboDefault;
   if (typeof stored.cavemanDefault === 'string' && CAVEMAN_DEFAULTS.has(stored.cavemanDefault))
-
     base.cavemanDefault = stored.cavemanDefault;
   if (typeof stored.rtkDefault === 'boolean') base.rtkDefault = stored.rtkDefault;
   if (typeof stored.ponytailDefault === 'string' && PONYTAIL_DEFAULTS.has(stored.ponytailDefault))
@@ -134,7 +133,10 @@ function applyStored(base: Profile, stored: StoredSettings): void {
     base.headroomDefault = stored.headroomDefault;
   if (typeof stored.codegraphDefault === 'string' && CODEGRAPH_DEFAULTS.has(stored.codegraphDefault))
     base.codegraphDefault = stored.codegraphDefault;
-  if (typeof stored.codegraphSync === 'string' && (CODEGRAPH_SYNC_MODES as readonly string[]).includes(stored.codegraphSync))
+  if (
+    typeof stored.codegraphSync === 'string' &&
+    (CODEGRAPH_SYNC_MODES as readonly string[]).includes(stored.codegraphSync)
+  )
     base.codegraphSync = stored.codegraphSync as CodegraphSyncMode;
   if (typeof stored.currency === 'string' && isCurrencyCode(stored.currency.trim().toUpperCase())) {
     base.currency = stored.currency.trim().toUpperCase() as CurrencyCode;
@@ -161,7 +163,6 @@ function stripRetiredRoutingDefaults(stored: StoredSettings): void {
     if (section && typeof section === 'object') delete (section as Record<string, unknown>).routingDefault;
   }
 }
-
 
 async function storedProfile(host?: HostId | null): Promise<Profile> {
   return storedProfileSync(host);
@@ -234,14 +235,14 @@ async function writePluginSettings(
   const modes: Record<string, unknown> = opts.keepSharedModes
     ? {}
     : {
-      ...modeSection('comboDefault', profile.comboDefault),
-      ...modeSection('cavemanDefault', profile.cavemanDefault),
-      ...modeSection('rtkDefault', profile.rtkDefault),
-      ...modeSection('ponytailDefault', profile.ponytailDefault),
-      ...modeSection('pstackDefault', profile.pstackDefault),
-      ...modeSection('headroomDefault', profile.headroomDefault),
-      ...modeSection('codegraphDefault', profile.codegraphDefault),
-    };
+        ...modeSection('comboDefault', profile.comboDefault),
+        ...modeSection('cavemanDefault', profile.cavemanDefault),
+        ...modeSection('rtkDefault', profile.rtkDefault),
+        ...modeSection('ponytailDefault', profile.ponytailDefault),
+        ...modeSection('pstackDefault', profile.pstackDefault),
+        ...modeSection('headroomDefault', profile.headroomDefault),
+        ...modeSection('codegraphDefault', profile.codegraphDefault),
+      };
   const values = {
     ...stored,
     ...modes,
@@ -274,9 +275,7 @@ async function writePluginSettings(
       'pstackDefault',
       'headroomDefault',
       'codegraphDefault',
-    ].some(
-      (key) => before[key as keyof StoredSettings] !== values[key as keyof typeof values],
-    );
+    ].some((key) => before[key as keyof StoredSettings] !== values[key as keyof typeof values]);
   if (modesChanged) recordActivity('mode', 'Session defaults saved', formatProfile(profile));
   if (!options.quiet) console.log(`  [write] Session defaults in ${file}`);
   await mirrorPonytailDefault(profile.ponytailDefault, options);

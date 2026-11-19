@@ -1,12 +1,12 @@
-import {expect, test, vi} from 'vitest';
-import {chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
+import { expect, test, vi } from 'vitest';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {spawnSync} from 'node:child_process';
-import {fileURLToPath, pathToFileURL} from 'node:url';
-import {cliEnv, fakeRtkBin} from '../helpers/env.ts';
-import {registryUrl, releasesUrl} from '../helpers/registry.ts';
-import {installerManager} from '../../cli/update.ts';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { cliEnv, fakeRtkBin } from '../helpers/env.ts';
+import { registryUrl, releasesUrl } from '../helpers/registry.ts';
+import { installerManager } from '../../cli/update.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 

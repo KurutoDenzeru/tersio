@@ -2,9 +2,9 @@
 // omp model route. Nothing here starts a proxy; headroom's own install does that.
 import fs from 'node:fs';
 import path from 'node:path';
-import {homeDir} from './utils.ts';
-import {hostCap} from './host-caps.ts';
-import {sqliteRead} from './sqlite.ts';
+import { homeDir } from './utils.ts';
+import { hostCap } from './host-caps.ts';
+import { sqliteRead } from './sqlite.ts';
 
 /** Headroom's default proxy port, written into the durable config of the tools its init omits. */
 export const HEADROOM_PORT = 8787;
@@ -237,7 +237,6 @@ export function ompCachedEndpoint(model: string): OmpCachedEndpoint | null {
   return null;
 }
 
-
 /** Resolves the default endpoint for an entire provider directly from omp's model cache. */
 export function ompCachedProviderEndpoint(provider: string): OmpCachedEndpoint | null {
   const safe = provider.replace(/[^A-Za-z0-9._-]/g, '');
@@ -466,7 +465,11 @@ export function readOmpGateway(port: number = HEADROOM_PORT): OmpGatewayRoute | 
  * The endpoint omp's provider forwards to: the marker Tersio wrote once the provider is routed, else the
  * block's own endpoint. A provider with no block takes omp's catalog endpoint.
  */
-export function ompProviderUpstream(provider: string, port: number = HEADROOM_PORT, model?: string): { api: string; url: string } | null {
+export function ompProviderUpstream(
+  provider: string,
+  port: number = HEADROOM_PORT,
+  model?: string,
+): { api: string; url: string } | null {
   let text = '';
   try {
     text = fs.readFileSync(ompModelsFile(), 'utf8');
@@ -476,9 +479,10 @@ export function ompProviderUpstream(provider: string, port: number = HEADROOM_PO
   const block = ompProviderBlocks(text).find((entry) => entry.name === provider);
   if (!block) {
     const modelEndpoint = model ? ompCachedEndpoint(model) : null;
-    const cached = modelEndpoint && !pointsToProxy(modelEndpoint.baseUrl, port)
-      ? modelEndpoint
-      : ompCachedProviderEndpoint(provider);
+    const cached =
+      modelEndpoint && !pointsToProxy(modelEndpoint.baseUrl, port)
+        ? modelEndpoint
+        : ompCachedProviderEndpoint(provider);
     return cached ? { api: cached.api, url: cached.baseUrl } : null;
   }
   const api = ompBlockApi(block);
@@ -495,7 +499,9 @@ export function ompProviderUpstream(provider: string, port: number = HEADROOM_PO
   // from the host's authoritative catalog, never forward the proxy back into itself.
   const cached = ompCachedProviderEndpoint(provider);
   const catalogUrl = cached
-    ? (ompProviderIsMultiDialect(provider) ? cached.baseUrl.replace(/\/v1\/?$/, '') : cached.baseUrl)
+    ? ompProviderIsMultiDialect(provider)
+      ? cached.baseUrl.replace(/\/v1\/?$/, '')
+      : cached.baseUrl
     : '';
   const url = block.marker || (block.baseUrl && !pointsToProxy(block.baseUrl, port) ? block.baseUrl : catalogUrl);
   return url && !pointsToProxy(url, port) ? { api, url } : null;
@@ -512,7 +518,10 @@ function ompModelBaseLine(lines: string[], providerLine: number, model: string |
   for (let i = providerLine + 1; i < lines.length; i += 1) {
     const raw = lines[i]!;
     const trimmed = raw.trim();
-    if (trimmed !== '' && raw.length - raw.trimStart().length <= 2) { end = i; break; }
+    if (trimmed !== '' && raw.length - raw.trimStart().length <= 2) {
+      end = i;
+      break;
+    }
     if (!trimmed.startsWith('- ')) continue;
     if (start >= 0) ranges.push([start, i]);
     start = i;
@@ -553,7 +562,10 @@ export function routeOmpGateway(route: OmpGatewayRoute, port: number = HEADROOM_
     const modelLine = ompModelBaseLine(lines, baseLine, route.model);
     if (modelLine !== null) {
       const modelIndent = lines[modelLine]!.match(/^\s*/)?.[0] ?? '      ';
-      const original = lines[modelLine]!.trim().slice('baseUrl:'.length).trim().replace(/^['"]|['"]$/g, '');
+      const original = lines[modelLine]!.trim()
+        .slice('baseUrl:'.length)
+        .trim()
+        .replace(/^['"]|['"]$/g, '');
       const freshModel = original && !pointsToProxy(original, port);
       if (freshModel) lines.splice(modelLine, 0, `${modelIndent}# tersio-headroom-upstream: ${original}`);
       lines[modelLine + (freshModel ? 1 : 0)] = `${modelIndent}baseUrl: ${url}`;
@@ -627,7 +639,9 @@ export function routeOmpDefaultModel(port: number = HEADROOM_PORT): boolean {
 
   // Collect all models referenced across modelRoles and fallback chains, default first
   const models = [defaultModel];
-  const matches = configText.matchAll(/(?:^|\n)\s*(?:[a-zA-Z0-9_-]+:|-)\s*['"]?([a-zA-Z0-9_-]+\/[a-zA-Z0-9._:/-]+)['"]?/g);
+  const matches = configText.matchAll(
+    /(?:^|\n)\s*(?:[a-zA-Z0-9_-]+:|-)\s*['"]?([a-zA-Z0-9_-]+\/[a-zA-Z0-9._:/-]+)['"]?/g,
+  );
   for (const m of matches) {
     const val = m[1]?.trim();
     if (val && !models.includes(val)) models.push(val);
@@ -659,7 +673,9 @@ export function routeOmpModel(model: string, port: number = HEADROOM_PORT): bool
     if (block && block.baseUrl && block.baseLine >= 0) {
       const api = ompBlockApi(block);
       if (!isHeadroomCompatibleApi(api)) return false;
-      const original = block.marker || (!pointsToProxy(block.baseUrl, port) ? block.baseUrl : ompProviderUpstream(provider, port)?.url);
+      const original =
+        block.marker ||
+        (!pointsToProxy(block.baseUrl, port) ? block.baseUrl : ompProviderUpstream(provider, port)?.url);
       if (!original) return false;
       return routeOmpGateway({ provider, baseUrl: original, model: slash > 0 ? model : null }, port);
     }
@@ -673,10 +689,7 @@ export function routeOmpModel(model: string, port: number = HEADROOM_PORT): bool
   const blockLines = [`  ${endpoint.provider}:`];
   // A mixed-dialect provider must keep model-level API selection from its catalog.
   if (!ompProviderIsMultiDialect(endpoint.provider)) blockLines.push(`    api: ${endpoint.api}`);
-  blockLines.push(
-    `    # tersio-headroom-upstream: ${endpoint.baseUrl}`,
-    `    baseUrl: ${baseUrl}`,
-  );
+  blockLines.push(`    # tersio-headroom-upstream: ${endpoint.baseUrl}`, `    baseUrl: ${baseUrl}`);
   const lines = text.split(/\r?\n/);
   const at = lines.findIndex((line) => /^providers:\s*$/.test(line));
   if (at < 0) return false;
@@ -688,4 +701,3 @@ export function routeOmpModel(model: string, port: number = HEADROOM_PORT): bool
     return false;
   }
 }
-

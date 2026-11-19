@@ -1,71 +1,71 @@
 // cli/uninstall.ts — remove managed extensions, plugins, and binaries.
-import {existsSync, promises as fs} from 'node:fs';
+import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
-    args,
-    debug,
-    dryRun,
-    execP,
-    HOME,
-    keepPonytail,
-    OMP_AGENT_DIR,
-    OMP_PLUGINS_DIR,
-    PACKAGE_NAME,
-    removePonytail,
-    removeRtk,
-    writeConfigLines,
-    yes,
+  args,
+  debug,
+  dryRun,
+  execP,
+  HOME,
+  keepPonytail,
+  OMP_AGENT_DIR,
+  OMP_PLUGINS_DIR,
+  PACKAGE_NAME,
+  removePonytail,
+  removeRtk,
+  writeConfigLines,
+  yes,
 } from './common.ts';
-import {PONYTAIL_PKG} from './manifest.ts';
-import {askInteractiveChoice, closeRL, confirmDestructive, sayTagged, tty} from './interactive.ts';
-import type {HostEntry} from './hosts.ts';
+import { PONYTAIL_PKG } from './manifest.ts';
+import { askInteractiveChoice, closeRL, confirmDestructive, sayTagged, tty } from './interactive.ts';
+import type { HostEntry } from './hosts.ts';
 import {
-    detectHosts,
-    dshCliProfiles,
-    dshDesktopProfilePresent,
-    dshPackageDir,
-    dshRunner,
-    parseHostArg,
-    removeDshMcpCommand,
+  detectHosts,
+  dshCliProfiles,
+  dshDesktopProfilePresent,
+  dshPackageDir,
+  dshRunner,
+  parseHostArg,
+  removeDshMcpCommand,
 } from './hosts.ts';
-import type {HostId} from '../extensions/shared/host-caps.ts';
-import {hostCap} from '../extensions/shared/host-caps.ts';
+import type { HostId } from '../extensions/shared/host-caps.ts';
+import { hostCap } from '../extensions/shared/host-caps.ts';
 import {
-    CODEX_MARKETPLACE_NAME,
-    CODEX_PLUGIN_ID,
-    CODEX_PROMPT_MARKER,
-    CODEX_PROMPT_NAMES,
-    codexLocalMarketplaceRoot,
-    codexPromptsDir,
-    codexUserHooksFile,
-    installedCodexPlugin,
-    removeCodexUserHook,
+  CODEX_MARKETPLACE_NAME,
+  CODEX_PLUGIN_ID,
+  CODEX_PROMPT_MARKER,
+  CODEX_PROMPT_NAMES,
+  codexLocalMarketplaceRoot,
+  codexPromptsDir,
+  codexUserHooksFile,
+  installedCodexPlugin,
+  removeCodexUserHook,
 } from '../extensions/shared/codex-plugin.ts';
 import {
-    CLAUDE_MARKETPLACE_NAME,
-    CLAUDE_PLUGIN_ID,
-    claudeLocalMarketplaceRoot,
-    installedClaudePlugin,
-    setClaudeRtkHook,
+  CLAUDE_MARKETPLACE_NAME,
+  CLAUDE_PLUGIN_ID,
+  claudeLocalMarketplaceRoot,
+  installedClaudePlugin,
+  setClaudeRtkHook,
 } from '../extensions/shared/claude-state.ts';
 import {
-    piAgentDir,
-    pigAgentDir,
-    readTextIfExists,
-    resolveCodexBinary,
-    resolveHostBinary,
+  piAgentDir,
+  pigAgentDir,
+  readTextIfExists,
+  resolveCodexBinary,
+  resolveHostBinary,
 } from '../extensions/shared/utils.ts';
-import {tersioSettingsFile} from '../extensions/shared/plugin-settings.ts';
-import {removeTersioMcp} from '../extensions/shared/mcp-config.ts';
+import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
+import { removeTersioMcp } from '../extensions/shared/mcp-config.ts';
 import {
-    isNativeRouteHost,
-    NATIVE_ROUTE_HOSTS,
-    removeNativeRoute,
-    unwrapClaudeHeadroom,
-    unwrapCodexHeadroom,
+  isNativeRouteHost,
+  NATIVE_ROUTE_HOSTS,
+  removeNativeRoute,
+  unwrapClaudeHeadroom,
+  unwrapCodexHeadroom,
 } from '../extensions/shared/headroom-routes.ts';
-import {restoreOmpGateway} from '../extensions/shared/headroom-proxy.ts';
-import {stopHeadroomRuntime} from '../extensions/shared/headroom-runtime.ts';
+import { restoreOmpGateway } from '../extensions/shared/headroom-proxy.ts';
+import { stopHeadroomRuntime } from '../extensions/shared/headroom-runtime.ts';
 
 interface UninstallOptions {
   yes?: boolean;
@@ -343,12 +343,12 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     const targets = [
       ...(installed.length > 0
         ? [
-          {
-            value: 'agents',
-            label: 'AI agents',
-            hint: `${installed.map((entry) => entry.label).join(', ')} — pick one next`,
-          },
-        ]
+            {
+              value: 'agents',
+              label: 'AI agents',
+              hint: `${installed.map((entry) => entry.label).join(', ')} — pick one next`,
+            },
+          ]
         : []),
       ...(shouldRemoveRtk ? [] : [{ value: 'rtk', label: 'RTK binary', hint: 'the rtk CLI the hooks call' }]),
       { value: 'headroom', label: 'Headroom binary', hint: 'uninstalls headroom-ai through uv or pip' },

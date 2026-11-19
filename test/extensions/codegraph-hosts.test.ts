@@ -1,10 +1,10 @@
-import {mkdirSync, writeFileSync} from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import {expect, test, vi} from 'vitest';
+import { expect, test, vi } from 'vitest';
 import codegraphExtension from '../../extensions/codegraph/omp.ts';
-import {ensureInitializedAndWatching} from '../../extensions/codegraph/client.ts';
-import type {ExtensionApi, ExtensionCtx} from '../../extensions/shared/types.ts';
-import {withHome} from '../helpers/env.ts';
+import { ensureInitializedAndWatching } from '../../extensions/codegraph/client.ts';
+import type { ExtensionApi, ExtensionCtx } from '../../extensions/shared/types.ts';
+import { withHome } from '../helpers/env.ts';
 
 vi.mock('../../extensions/codegraph/client.ts', () => ({
   ensureInitializedAndWatching: vi.fn<() => Promise<boolean>>().mockResolvedValue(true),

@@ -2,7 +2,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import {resolveCodeGraphLibrary} from '../extensions/codegraph/shared.ts';
+import { resolveCodeGraphLibrary } from '../extensions/codegraph/shared.ts';
 
 const UPSTREAM_PACKAGE = '@colbymchenry/codegraph';
 

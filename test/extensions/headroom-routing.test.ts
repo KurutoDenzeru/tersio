@@ -1,23 +1,23 @@
-import {mkdirSync, mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {afterEach, describe, expect, test} from 'vitest';
-import {withHome} from '../helpers/env.ts';
+import { afterEach, describe, expect, test } from 'vitest';
+import { withHome } from '../helpers/env.ts';
 import {
-    codexRouteFrom,
-    defaultOmpModel,
-    describeHeadroomRoute,
-    dshProviderBaseUrls,
-    dshRouteFrom,
-    ompModelRoute,
-    piRouteFrom,
-    readHeadroomRoute,
-    sameProxyEndpoint,
+  codexRouteFrom,
+  defaultOmpModel,
+  describeHeadroomRoute,
+  dshProviderBaseUrls,
+  dshRouteFrom,
+  ompModelRoute,
+  piRouteFrom,
+  readHeadroomRoute,
+  sameProxyEndpoint,
 } from '../../extensions/shared/headroom-routing.ts';
-import {routeOmpDefaultModel, routeOmpModel} from '../../extensions/shared/headroom-proxy.ts';
-import {headroomRouteUpstreams} from '../../extensions/shared/headroom-routes.ts';
-import {ensureAgentProviderRoute} from '../../extensions/shared/headroom-agent.ts';
-import {sqliteAvailable, sqliteExec} from '../../extensions/shared/sqlite.ts';
+import { routeOmpDefaultModel, routeOmpModel } from '../../extensions/shared/headroom-proxy.ts';
+import { headroomRouteUpstreams } from '../../extensions/shared/headroom-routes.ts';
+import { ensureAgentProviderRoute } from '../../extensions/shared/headroom-agent.ts';
+import { sqliteAvailable, sqliteExec } from '../../extensions/shared/sqlite.ts';
 
 const PROXY = 'http://127.0.0.1:8787/';
 const MODELS = `providers:

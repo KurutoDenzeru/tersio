@@ -1,70 +1,70 @@
 // Usage and report surface: the ledger, store, hosts, tokens, backups, currency, and agent stats.
-import {afterEach, beforeEach, describe, expect, test} from 'vitest';
-import {type ChildProcess, spawn, spawnSync} from 'node:child_process';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import fs, {
-    appendFileSync,
-    existsSync,
-    mkdirSync,
-    mkdtempSync,
-    readdirSync,
-    readFileSync,
-    rmSync,
-    utimesSync,
-    writeFileSync,
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
 } from 'node:fs';
-import {createRequire} from 'node:module';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 import {
-    appendUsage,
-    canonicalModelId,
-    clearRtkAdoptionCache,
-    co2Grams,
-    co2GramsFor,
-    displayModelId,
-    foldModelsByLabel,
-    importSessionTokens,
-    ingestSessionRow,
-    ledgerPath,
-    markReset,
-    newSessionAccum,
-    priceFor,
-    readResetWatermark,
-    readRtkAdoption,
-    readUsage,
-    RECENT_LIMIT,
-    usdCost,
+  appendUsage,
+  canonicalModelId,
+  clearRtkAdoptionCache,
+  co2Grams,
+  co2GramsFor,
+  displayModelId,
+  foldModelsByLabel,
+  importSessionTokens,
+  ingestSessionRow,
+  ledgerPath,
+  markReset,
+  newSessionAccum,
+  priceFor,
+  readResetWatermark,
+  readRtkAdoption,
+  readUsage,
+  RECENT_LIMIT,
+  usdCost,
 } from '../../extensions/shared/usage-ledger.ts';
 import {
-    clearUsageDb,
-    maybeScheduledBackup,
-    readBackupSchedule,
-    readUsageDb,
-    reparseGuardReport,
-    syncUsageDb,
-    usageDbPath,
+  clearUsageDb,
+  maybeScheduledBackup,
+  readBackupSchedule,
+  readUsageDb,
+  reparseGuardReport,
+  syncUsageDb,
+  usageDbPath,
 } from '../../extensions/shared/usage-store.ts';
-import {errorSignature, readAgentStats, readSessionTrace} from '../../extensions/shared/agent-stats.ts';
-import {sqliteAvailable, sqliteExec, sqliteRead} from '../../extensions/shared/sqlite.ts';
+import { errorSignature, readAgentStats, readSessionTrace } from '../../extensions/shared/agent-stats.ts';
+import { sqliteAvailable, sqliteExec, sqliteRead } from '../../extensions/shared/sqlite.ts';
 import {
-    BACKUP_KEEP,
-    backupDir,
-    createDataBackup,
-    dataSources,
-    deleteDataBackup,
-    listDataBackups,
-    pruneBackups,
-    readSnapshotMember,
-    restoreDataBackup,
+  BACKUP_KEEP,
+  backupDir,
+  createDataBackup,
+  dataSources,
+  deleteDataBackup,
+  listDataBackups,
+  pruneBackups,
+  readSnapshotMember,
+  restoreDataBackup,
 } from '../../extensions/shared/snapshots.ts';
-import {resetCounts, resetStatistics} from '../../cli/reset.ts';
-import {convertUsd, formatCurrency, FX_SNAPSHOT_RATES} from '../../cli/currency.ts';
-import {offsetFrom} from '../../cli/dashboard.ts';
-import {FX_SNAPSHOT} from '../../dashboard/app/src/lib/format.ts';
-import {hasSqlite} from '../helpers/env.ts';
-import {sessionPath, writeQuotaDb, writeSessionFixture, writeUsageStore} from '../helpers/omp-fixture.ts';
+import { resetCounts, resetStatistics } from '../../cli/reset.ts';
+import { convertUsd, formatCurrency, FX_SNAPSHOT_RATES } from '../../cli/currency.ts';
+import { offsetFrom } from '../../cli/dashboard.ts';
+import { FX_SNAPSHOT } from '../../dashboard/app/src/lib/format.ts';
+import { hasSqlite } from '../helpers/env.ts';
+import { sessionPath, writeQuotaDb, writeSessionFixture, writeUsageStore } from '../helpers/omp-fixture.ts';
 
 // Shared by the currency CLI tests and the dashboard currency server test.
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -447,78 +447,87 @@ test.skipIf(!hasSqlite())('the store records every agent Tersio can read', () =>
     rmSync(dir, { recursive: true, force: true });
   }
 });
-test.skipIf(!hasSqlite())('OpenCode uses known-rate estimates but keeps unknown and explicit zero costs distinct', () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'tersio-opencode-cost-'));
-  const keys = [
-    'TERSIO_HOME',
-    'TERSIO_AGENT_STATS_DB',
-    'TERSIO_OPENCODE_DIR',
-    'TERSIO_OPENCODE_DB',
-    'TERSIO_PRICES_FILE',
-    'TERSIO_PRICES_OVERRIDE_FILE',
-  ] as const;
-  const previous = new Map(keys.map((key) => [key, process.env[key]]));
-  try {
-    withEnv(dir, () => {
-      process.env.TERSIO_HOME = dir;
-      process.env.TERSIO_AGENT_STATS_DB = process.env.TERSIO_USAGE_DB!;
-      process.env.TERSIO_OPENCODE_DIR = path.join(dir, 'opencode');
-      process.env.TERSIO_OPENCODE_DB = path.join(dir, 'opencode.db');
-      process.env.TERSIO_PRICES_FILE = path.join(dir, 'prices.json');
-      process.env.TERSIO_PRICES_OVERRIDE_FILE = path.join(dir, 'prices.local.json');
-      writeFileSync(
-        process.env.TERSIO_PRICES_FILE,
-        JSON.stringify({
-          fetchedAt: Date.now(),
-          exact: {
-            'opencode/deepseek/deepseek-v4.1-flash': [10, 20, 1, 12.5],
-            'opencode/free-provider/free-model': [10, 20, 1, 12.5],
-          },
-        }),
-      );
-      mkdirSync(process.env.TERSIO_OPENCODE_DIR, { recursive: true });
-      const writeMessage = (id: string, providerID: string, modelID: string, created: number, cost?: number): void => {
+test.skipIf(!hasSqlite())(
+  'OpenCode uses known-rate estimates but keeps unknown and explicit zero costs distinct',
+  () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'tersio-opencode-cost-'));
+    const keys = [
+      'TERSIO_HOME',
+      'TERSIO_AGENT_STATS_DB',
+      'TERSIO_OPENCODE_DIR',
+      'TERSIO_OPENCODE_DB',
+      'TERSIO_PRICES_FILE',
+      'TERSIO_PRICES_OVERRIDE_FILE',
+    ] as const;
+    const previous = new Map(keys.map((key) => [key, process.env[key]]));
+    try {
+      withEnv(dir, () => {
+        process.env.TERSIO_HOME = dir;
+        process.env.TERSIO_AGENT_STATS_DB = process.env.TERSIO_USAGE_DB!;
+        process.env.TERSIO_OPENCODE_DIR = path.join(dir, 'opencode');
+        process.env.TERSIO_OPENCODE_DB = path.join(dir, 'opencode.db');
+        process.env.TERSIO_PRICES_FILE = path.join(dir, 'prices.json');
+        process.env.TERSIO_PRICES_OVERRIDE_FILE = path.join(dir, 'prices.local.json');
         writeFileSync(
-          path.join(process.env.TERSIO_OPENCODE_DIR!, `${id}.json`),
+          process.env.TERSIO_PRICES_FILE,
           JSON.stringify({
-            role: 'assistant',
-            providerID,
-            modelID,
-            tokens: { input: 30, output: 20, cache: { read: 0, write: 7 } },
-            time: { created },
-            ...(cost === undefined ? {} : { cost }),
+            fetchedAt: Date.now(),
+            exact: {
+              'opencode/deepseek/deepseek-v4.1-flash': [10, 20, 1, 12.5],
+              'opencode/free-provider/free-model': [10, 20, 1, 12.5],
+            },
           }),
-          'utf8',
         );
-      };
-      writeMessage('known', 'deepseek', 'deepseek-v4.1-flash', Date.parse('2026-09-01T10:00:00.000Z'));
-      writeMessage('unknown', 'future-provider', 'future-model', Date.parse('2026-09-01T10:01:00.000Z'));
-      writeMessage('zero', 'free-provider', 'free-model', Date.parse('2026-09-01T10:02:00.000Z'), 0);
+        mkdirSync(process.env.TERSIO_OPENCODE_DIR, { recursive: true });
+        const writeMessage = (
+          id: string,
+          providerID: string,
+          modelID: string,
+          created: number,
+          cost?: number,
+        ): void => {
+          writeFileSync(
+            path.join(process.env.TERSIO_OPENCODE_DIR!, `${id}.json`),
+            JSON.stringify({
+              role: 'assistant',
+              providerID,
+              modelID,
+              tokens: { input: 30, output: 20, cache: { read: 0, write: 7 } },
+              time: { created },
+              ...(cost === undefined ? {} : { cost }),
+            }),
+            'utf8',
+          );
+        };
+        writeMessage('known', 'deepseek', 'deepseek-v4.1-flash', Date.parse('2026-09-01T10:00:00.000Z'));
+        writeMessage('unknown', 'future-provider', 'future-model', Date.parse('2026-09-01T10:01:00.000Z'));
+        writeMessage('zero', 'free-provider', 'free-model', Date.parse('2026-09-01T10:02:00.000Z'), 0);
 
-      expect(syncUsageDb()).toBe(true);
-      const stats = readAgentStats('all', 'requests');
-      expect(stats.overall).toMatchObject({ requests: 3, unpricedRequests: 1 });
-      expect(stats.overall.costUsd).toBeCloseTo(0.0007875, 12);
-      const requests = new Map(stats.recent.map((row) => [row.entryId, row]));
-      expect(requests.get('known')?.costUsd).toBeCloseTo(0.0007875, 12);
-      expect(requests.get('known')?.unpriced).toBe(false);
-      expect(requests.get('unknown')).toMatchObject({ costUsd: 0, unpriced: true });
-      expect(requests.get('zero')).toMatchObject({ costUsd: 0, unpriced: false });
-      const db = process.env.TERSIO_USAGE_DB!;
-      expect(sqliteRead(db, 'SELECT COUNT(*) FROM messages WHERE usd IS NULL;').trim()).toBe('1');
-      expect(sqliteRead(db, 'SELECT COUNT(*) FROM messages WHERE usd=0;').trim()).toBe('1');
-      expect(sqliteRead(db, "SELECT usd_estimated FROM messages WHERE id='known';").trim()).toBe('1');
-      expect(sqliteRead(db, "SELECT usd_estimated FROM messages WHERE id='zero';").trim()).toBe('0');
-      expect(readUsageDb()?.tokens.costMeasured).toBe(0);
-    });
-  } finally {
-    for (const [key, value] of previous) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
+        expect(syncUsageDb()).toBe(true);
+        const stats = readAgentStats('all', 'requests');
+        expect(stats.overall).toMatchObject({ requests: 3, unpricedRequests: 1 });
+        expect(stats.overall.costUsd).toBeCloseTo(0.0007875, 12);
+        const requests = new Map(stats.recent.map((row) => [row.entryId, row]));
+        expect(requests.get('known')?.costUsd).toBeCloseTo(0.0007875, 12);
+        expect(requests.get('known')?.unpriced).toBe(false);
+        expect(requests.get('unknown')).toMatchObject({ costUsd: 0, unpriced: true });
+        expect(requests.get('zero')).toMatchObject({ costUsd: 0, unpriced: false });
+        const db = process.env.TERSIO_USAGE_DB!;
+        expect(sqliteRead(db, 'SELECT COUNT(*) FROM messages WHERE usd IS NULL;').trim()).toBe('1');
+        expect(sqliteRead(db, 'SELECT COUNT(*) FROM messages WHERE usd=0;').trim()).toBe('1');
+        expect(sqliteRead(db, "SELECT usd_estimated FROM messages WHERE id='known';").trim()).toBe('1');
+        expect(sqliteRead(db, "SELECT usd_estimated FROM messages WHERE id='zero';").trim()).toBe('0');
+        expect(readUsageDb()?.tokens.costMeasured).toBe(0);
+      });
+    } finally {
+      for (const [key, value] of previous) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      rmSync(dir, { recursive: true, force: true });
     }
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+  },
+);
 
 test.skipIf(!hasSqlite())('the reads the page needs are indexed', () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'tersio-index-'));
@@ -1041,8 +1050,8 @@ test.skipIf(!hasSqlite())('v9 databases migrate in place without re-parsing tran
           `CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);`,
           `CREATE TABLE files (path TEXT PRIMARY KEY, mtime REAL NOT NULL, size INTEGER NOT NULL);`,
           `CREATE TABLE messages (file TEXT NOT NULL, t REAL, model TEXT NOT NULL,` +
-          ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
-          ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT);`,
+            ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
+            ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT);`,
           `INSERT INTO files VALUES ('${file}',1,2);`,
           `INSERT INTO messages VALUES ('${file}',1,'m',10,1,NULL,0,0,NULL,'completed',NULL,NULL,'[]','pi');`,
           `INSERT INTO messages VALUES ('${file}',2,'m',20,2,NULL,0,0,NULL,'completed',NULL,NULL,'[]','pi');`,
@@ -1079,11 +1088,11 @@ test.skipIf(!hasSqlite())('v10 databases gain the id column without re-parsing',
           `CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);`,
           `CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT UNIQUE NOT NULL, mtime REAL NOT NULL, size INTEGER NOT NULL);`,
           `CREATE TABLE messages (file_id INTEGER NOT NULL REFERENCES files(id), t REAL, model TEXT NOT NULL,` +
-          ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
-          ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT);`,
+            ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
+            ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT);`,
           `INSERT INTO files (path, mtime, size) VALUES ('${file}',1,2);`,
           `INSERT INTO messages (file_id, t, model, i, o, d, cr, cw, usd, st, code, note, tools, h)` +
-          ` VALUES (1,1,'m',10,1,NULL,0,0,NULL,'completed',NULL,NULL,'[]','pi');`,
+            ` VALUES (1,1,'m',10,1,NULL,0,0,NULL,'completed',NULL,NULL,'[]','pi');`,
           `INSERT INTO meta VALUES ('parser_version','10');`,
         ].join(''),
       );
@@ -1117,11 +1126,11 @@ test.skipIf(!hasSqlite())('v12 databases gain the ttft column and backfill it fr
           `CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);`,
           `CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT UNIQUE NOT NULL, mtime REAL NOT NULL, size REAL NOT NULL);`,
           `CREATE TABLE messages (file_id INTEGER NOT NULL REFERENCES files(id), t REAL, model TEXT NOT NULL,` +
-          ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
-          ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, a TEXT, id TEXT);`,
+            ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
+            ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, a TEXT, id TEXT);`,
           `INSERT INTO files (path, mtime, size) VALUES ('${file}',1,2);`,
           `INSERT INTO messages (file_id, t, model, i, o, d, cr, cw, usd, st, code, note, tools, h, a, id)` +
-          ` VALUES (1,1,'m',10,1,4000,0,0,NULL,'completed',NULL,NULL,'[]','pi','main','row-1');`,
+            ` VALUES (1,1,'m',10,1,4000,0,0,NULL,'completed',NULL,NULL,'[]','pi','main','row-1');`,
           `INSERT INTO meta VALUES ('parser_version','12');`,
         ].join(''),
       );
@@ -1298,10 +1307,7 @@ test.skipIf(!hasSqlite())('Codex fallback migration keeps unknown costs unpriced
       );
       const legacyCodexSession = path.join(sessions, '.codex', 'sessions', 'rotated.jsonl');
       const legacyHostSession = path.join(sessions, '.omp', 'agent', 'sessions', 'project', 'rotated.jsonl');
-      const fallback = usdCost(
-        { input: 1000, output: 100, cacheRead: 0, cacheWrite: 0 },
-        'fixture-unknown-model',
-      );
+      const fallback = usdCost({ input: 1000, output: 100, cacheRead: 0, cacheWrite: 0 }, 'fixture-unknown-model');
       expect(fallback.priced).toBe(false);
       const quotedLegacyCodex = `'${legacyCodexSession.replace(/'/g, "''")}'`;
       const quotedLegacyHost = `'${legacyHostSession.replace(/'/g, "''")}'`;
@@ -1309,23 +1315,25 @@ test.skipIf(!hasSqlite())('Codex fallback migration keeps unknown costs unpriced
       sqliteExec(
         db,
         `CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);` +
-        `CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT UNIQUE NOT NULL, mtime REAL NOT NULL, size INTEGER NOT NULL);` +
-        `CREATE TABLE messages (file_id INTEGER NOT NULL REFERENCES files(id), t REAL, model TEXT NOT NULL, i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, tf REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL, usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, a TEXT, id TEXT, tc TEXT, p TEXT, cwd TEXT);` +
-        `INSERT INTO meta VALUES ('parser_version','18');` +
-        `INSERT INTO files (path,mtime,size) VALUES (${quotedLegacyCodex},0,0),(${quotedLegacyHost},0,0);` +
-        `INSERT INTO messages (file_id,t,model,i,o,d,tf,cr,cw,usd,st,tools,h,a,id,tc,p,cwd) VALUES ` +
-        `(1,${Date.parse(at)},'fixture-unknown-model',1000,100,NULL,NULL,0,0,${fallback.usd},'completed','[]','codex','main','legacy-codex',NULL,'openai','/tmp/project'),` +
-        `(2,${Date.parse(next)},'fixture-reported-model',100,0,NULL,NULL,0,0,0.25,'completed','[]','omp','main','rotated-host-cost',NULL,NULL,'/tmp/project');`,
+          `CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT UNIQUE NOT NULL, mtime REAL NOT NULL, size INTEGER NOT NULL);` +
+          `CREATE TABLE messages (file_id INTEGER NOT NULL REFERENCES files(id), t REAL, model TEXT NOT NULL, i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, tf REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL, usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, a TEXT, id TEXT, tc TEXT, p TEXT, cwd TEXT);` +
+          `INSERT INTO meta VALUES ('parser_version','18');` +
+          `INSERT INTO files (path,mtime,size) VALUES (${quotedLegacyCodex},0,0),(${quotedLegacyHost},0,0);` +
+          `INSERT INTO messages (file_id,t,model,i,o,d,tf,cr,cw,usd,st,tools,h,a,id,tc,p,cwd) VALUES ` +
+          `(1,${Date.parse(at)},'fixture-unknown-model',1000,100,NULL,NULL,0,0,${fallback.usd},'completed','[]','codex','main','legacy-codex',NULL,'openai','/tmp/project'),` +
+          `(2,${Date.parse(next)},'fixture-reported-model',100,0,NULL,NULL,0,0,0.25,'completed','[]','omp','main','rotated-host-cost',NULL,NULL,'/tmp/project');`,
       );
 
       expect(syncUsageDb()).toBe(true);
       expect(sqliteRead(db, 'SELECT COUNT(*) FROM messages;').trim()).toBe('4');
-      expect(sqliteRead(db, "SELECT COUNT(*) FROM messages WHERE model='fixture-unknown-model' AND usd IS NULL;").trim())
-        .toBe('2');
+      expect(
+        sqliteRead(db, "SELECT COUNT(*) FROM messages WHERE model='fixture-unknown-model' AND usd IS NULL;").trim(),
+      ).toBe('2');
       expect(sqliteRead(db, "SELECT usd_estimated FROM messages WHERE id='priced-codex';").trim()).toBe('1');
       expect(sqliteRead(db, "SELECT usd_estimated FROM messages WHERE id='unknown-codex';").trim()).toBe('0');
-      expect(sqliteRead(db, "SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='usd_estimated';").trim())
-        .toBe('1');
+      expect(
+        sqliteRead(db, "SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='usd_estimated';").trim(),
+      ).toBe('1');
       const stats = readAgentStats('all', 'requests');
       expect(stats.overall).toMatchObject({ requests: 4, unpricedRequests: 2 });
       expect(stats.overall.costUsd).toBeCloseTo(0.262, 12);
@@ -1335,7 +1343,6 @@ test.skipIf(!hasSqlite())('Codex fallback migration keeps unknown costs unpriced
       expect(requests.get('legacy-codex')?.unpriced).toBe(true);
       expect(requests.get('rotated-host-cost')?.costUsd).toBe(0.25);
       expect(readUsageDb()?.tokens.costMeasured).toBeCloseTo(0.25, 12);
-
     });
   } finally {
     for (const [key, value] of previous) {

@@ -1,21 +1,21 @@
-import {expect, test} from 'vitest';
-import {existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
+import { expect, test } from 'vitest';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import { fileURLToPath } from 'node:url';
 import headroomSessionExtension, {
-    HEADROOM_INSTALL_HINT,
-    headroomInstruction,
-    needsHeadroomProxy,
+  HEADROOM_INSTALL_HINT,
+  headroomInstruction,
+  needsHeadroomProxy,
 } from '../../extensions/headroom/index.ts';
-import {readHeadroomRoute} from '../../extensions/shared/headroom-routing.ts';
+import { readHeadroomRoute } from '../../extensions/shared/headroom-routing.ts';
 import comboToggleExtension from '../../extensions/combo/index.ts';
-import {getSharedComboState, resetSharedComboState} from '../../extensions/shared/session-state.ts';
-import {patchState} from '../../extensions/shared/state.ts';
-import {resolveHeadroomBinary} from '../../extensions/shared/utils.ts';
-import type {ExtensionApi, SessionEntry} from '../../extensions/shared/types.ts';
-import {fakeExecutable, withHome} from '../helpers/env.ts';
-import {createServer} from 'node:http';
+import { getSharedComboState, resetSharedComboState } from '../../extensions/shared/session-state.ts';
+import { patchState } from '../../extensions/shared/state.ts';
+import { resolveHeadroomBinary } from '../../extensions/shared/utils.ts';
+import type { ExtensionApi, SessionEntry } from '../../extensions/shared/types.ts';
+import { fakeExecutable, withHome } from '../helpers/env.ts';
+import { createServer } from 'node:http';
 
 // fileURLToPath, not `.pathname`: a URL pathname on Windows is `/D:/...`, which path.join doubles into `D:\D:\...`.
 process.env.HOME = fileURLToPath(new URL('../definitely-missing-home/headroom', import.meta.url));
@@ -43,11 +43,11 @@ function harness(
   const statuses = new Map<string, string>();
   headroomSessionExtension({
     hostId,
-    setLabel() { },
+    setLabel() {},
     registerCommand(name: string, config: { handler: CommandHandler }) {
       commands.set(name, config.handler);
     },
-    registerTool() { },
+    registerTool() {},
     appendEntry(customType: string, data: Record<string, unknown>) {
       entries.push({ type: 'custom', customType, data });
     },
@@ -88,7 +88,8 @@ async function withPath(headroomDir: string | null, run: () => Promise<void>): P
   }
 }
 
-const ON_LINE = '🧩 CUSTOM | 🪨 caveman:OFF | 🗜️ rtk:OFF | 🍃 headroom:ON | 🧠 ponytail:OFF | 🥔 pstack:OFF | 🕸️ codegraph:OFF';
+const ON_LINE =
+  '🧩 CUSTOM | 🪨 caveman:OFF | 🗜️ rtk:OFF | 🍃 headroom:ON | 🧠 ponytail:OFF | 🥔 pstack:OFF | 🕸️ codegraph:OFF';
 const OFF_LINE = '🧩 OFF';
 const HINT = `Headroom binary not found on PATH. Install it yourself with: ${HEADROOM_INSTALL_HINT}`;
 
@@ -177,11 +178,11 @@ test('the configured default starts a fresh session with headroom on', async () 
     const comboHandlers = new Map<string, EventHandler>();
     const comboEntries: SessionEntry[] = [];
     comboToggleExtension({
-      setLabel() { },
+      setLabel() {},
       registerCommand(name: string, config: { handler: CommandHandler }) {
         comboCommands.set(name, config.handler);
       },
-      registerTool() { },
+      registerTool() {},
       appendEntry(customType: string, data: Record<string, unknown>) {
         comboEntries.push({ type: 'custom', customType, data });
       },
@@ -201,7 +202,7 @@ test('the configured default starts a fresh session with headroom on', async () 
             if (name === 'tersio') comboCtx.notifications.push(v);
           }
         },
-        notify() { },
+        notify() {},
       },
     };
     const { handlers, ctx } = harness([]);

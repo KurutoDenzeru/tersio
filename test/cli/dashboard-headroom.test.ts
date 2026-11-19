@@ -1,10 +1,10 @@
-import {chmodSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type http from 'node:http';
-import {expect, test, vi} from 'vitest';
-import {withHome} from '../helpers/env.ts';
-import type {HeadroomRouteCtx} from '../../cli/dashboard-headroom.ts';
-import {handleHeadroomRoutes} from '../../cli/dashboard-headroom.ts';
+import { expect, test, vi } from 'vitest';
+import { withHome } from '../helpers/env.ts';
+import type { HeadroomRouteCtx } from '../../cli/dashboard-headroom.ts';
+import { handleHeadroomRoutes } from '../../cli/dashboard-headroom.ts';
 import type * as HeadroomRuntime from '../../extensions/shared/headroom-runtime.ts';
 
 // Runtime availability is measured separately from request-local provider routing.

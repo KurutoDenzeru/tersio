@@ -1,10 +1,10 @@
-import {describe, expect, test} from 'vitest';
+import { describe, expect, test } from 'vitest';
 import http from 'node:http';
-import {mkdtemp, readFile} from 'node:fs/promises';
+import { mkdtemp, readFile } from 'node:fs/promises';
 
-import {tmpdir} from 'node:os';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
-import {handleMessage} from '../../cli/mcp.ts';
+import { handleMessage } from '../../cli/mcp.ts';
 
 // One collector stands in for the wire, so the tests assert what a client receives.
 function collector(): { sent: unknown[]; send: (msg: unknown) => void } {

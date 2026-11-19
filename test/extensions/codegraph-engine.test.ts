@@ -1,21 +1,21 @@
-import {afterAll, beforeAll, describe, expect, test} from 'vitest';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import {
-    ensureInitializedAndWatching,
-    exploreSymbol,
-    findRepoRoot,
-    getCodeGraph,
-    getCodeGraphStatus,
-    getComplexityScore,
-    hasCodeGraphIndex,
-    stopAllWatchers,
-    stopWatching,
-    syncCodeGraph,
+  ensureInitializedAndWatching,
+  exploreSymbol,
+  findRepoRoot,
+  getCodeGraph,
+  getCodeGraphStatus,
+  getComplexityScore,
+  hasCodeGraphIndex,
+  stopAllWatchers,
+  stopWatching,
+  syncCodeGraph,
 } from '../../extensions/codegraph/shared.ts';
-import {installGitHooks} from '../../extensions/codegraph/git-hooks.ts';
-import {type CodeGraphTestFixture, createCodeGraphTestFixture} from '../helpers/codegraph.ts';
+import { installGitHooks } from '../../extensions/codegraph/git-hooks.ts';
+import { type CodeGraphTestFixture, createCodeGraphTestFixture } from '../helpers/codegraph.ts';
 
 describe('CodeGraph Engine & Concurrency', () => {
   let fixture: CodeGraphTestFixture;
@@ -164,25 +164,76 @@ export function helper(): void {}`,
     // Running again should skip already installed
     const rerun = installGitHooks(fakeRepo);
     expect(rerun.skipped.length).toBe(3);
+    fs.rmSync(fakeRepo, { recursive: true, force: true });
   });
 
   test('installGitHooks runs before an existing hook that exits early and leaves non-shell hooks alone', () => {
     const fakeRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'test-git-hooks-existing-'));
-    const hooks = path.join(fakeRepo, '.git', 'hooks');
-    fs.mkdirSync(hooks, { recursive: true });
-    fs.writeFileSync(path.join(hooks, 'post-commit'), '#!/bin/sh\necho mine\nexit 0\n', { mode: 0o755 });
-    const node = '#!/usr/bin/env node\nconsole.log(1);\n';
-    fs.writeFileSync(path.join(hooks, 'post-merge'), node, { mode: 0o755 });
+    try {
+      const hooks = path.join(fakeRepo, '.git', 'hooks');
+      fs.mkdirSync(hooks, { recursive: true });
+      fs.writeFileSync(path.join(hooks, 'post-commit'), '#!/bin/sh\necho mine\nexit 0\n', { mode: 0o755 });
+      const node = '#!/usr/bin/env node\nconsole.log(1);\n';
+      fs.writeFileSync(path.join(hooks, 'post-merge'), node, { mode: 0o755 });
 
-    const result = installGitHooks(fakeRepo);
-    expect(result.incompatible).toEqual(['post-merge']);
-    expect(result.installed).toEqual(['post-commit', 'post-checkout']);
+      const result = installGitHooks(fakeRepo);
+      expect(result.incompatible).toEqual(['post-merge']);
+      expect(result.installed).toEqual(['post-commit', 'post-checkout']);
 
-    const commit = fs.readFileSync(path.join(hooks, 'post-commit'), 'utf8');
-    expect(commit.startsWith('#!/bin/sh\n# Tersio CodeGraph')).toBe(true);
-    expect(commit.indexOf('tersio codegraph sync')).toBeLessThan(commit.indexOf('exit 0'));
-    expect(commit).toContain('echo mine');
-    expect(fs.readFileSync(path.join(hooks, 'post-merge'), 'utf8')).toBe(node);
+      const commit = fs.readFileSync(path.join(hooks, 'post-commit'), 'utf8');
+      expect(commit.startsWith('#!/bin/sh\n# Tersio CodeGraph')).toBe(true);
+      expect(commit.indexOf('tersio codegraph sync')).toBeLessThan(commit.indexOf('exit 0'));
+      expect(commit).toContain('echo mine');
+      expect(fs.readFileSync(path.join(hooks, 'post-merge'), 'utf8')).toBe(node);
+    } finally {
+      fs.rmSync(fakeRepo, { recursive: true, force: true });
+    }
+  });
+
+  test('installGitHooks accepts env -S shell shebangs, skips binaries, and keeps foreign bytes', () => {
+    const fakeRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'test-git-hooks-shebang-'));
+    try {
+      const hooks = path.join(fakeRepo, '.git', 'hooks');
+      fs.mkdirSync(hooks, { recursive: true });
+      fs.writeFileSync(path.join(hooks, 'post-commit'), '#!/usr/bin/env -S -u FOO bash\necho mine\n', { mode: 0o755 });
+      const binary = Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0x00, 0x01]);
+      fs.writeFileSync(path.join(hooks, 'post-merge'), binary, { mode: 0o755 });
+      const latin1 = Buffer.concat([Buffer.from('#!/bin/sh\n# caf'), Buffer.from([0xe9]), Buffer.from('\n')]);
+      fs.writeFileSync(path.join(hooks, 'post-checkout'), latin1, { mode: 0o755 });
+
+      const result = installGitHooks(fakeRepo);
+      expect(result.installed).toEqual(['post-commit', 'post-checkout']);
+      expect(result.incompatible).toEqual(['post-merge']);
+      expect(fs.readFileSync(path.join(hooks, 'post-merge')).equals(binary)).toBe(true);
+      const kept = fs.readFileSync(path.join(hooks, 'post-checkout'));
+      expect(kept.includes(Buffer.from([0xe9]))).toBe(true);
+      expect(kept.includes(Buffer.from([0xef, 0xbf, 0xbd]))).toBe(false);
+    } finally {
+      fs.rmSync(fakeRepo, { recursive: true, force: true });
+    }
+  });
+
+  test('installGitHooks refreshes an older block in place', () => {
+    const fakeRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'test-git-hooks-refresh-'));
+    try {
+      const hooks = path.join(fakeRepo, '.git', 'hooks');
+      fs.mkdirSync(hooks, { recursive: true });
+      const old =
+        '#!/bin/sh\necho before\n# Tersio CodeGraph automatic background sync hook\nold-command\nfi\necho after\n';
+      for (const name of ['post-commit', 'post-merge', 'post-checkout']) {
+        fs.writeFileSync(path.join(hooks, name), old, { mode: 0o755 });
+      }
+      const result = installGitHooks(fakeRepo);
+      expect(result.installed.length).toBe(3);
+      const text = fs.readFileSync(path.join(hooks, 'post-commit'), 'utf8');
+      expect(text).toContain('tersio codegraph sync');
+      expect(text).not.toContain('old-command');
+      expect(text).toContain('echo before');
+      expect(text).toContain('echo after');
+      expect(installGitHooks(fakeRepo).skipped.length).toBe(3);
+    } finally {
+      fs.rmSync(fakeRepo, { recursive: true, force: true });
+    }
   });
 });
 

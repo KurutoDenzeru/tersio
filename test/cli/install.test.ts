@@ -1,36 +1,36 @@
-import {expect, test} from 'vitest';
-import {execFileSync, spawnSync} from 'node:child_process';
+import { expect, test } from 'vitest';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
-    chmodSync,
-    existsSync,
-    mkdirSync,
-    mkdtempSync,
-    readdirSync,
-    readFileSync,
-    rmSync,
-    symlinkSync,
-    writeFileSync,
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
 } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import { fileURLToPath } from 'node:url';
 
-import {ensureExtensionInConfig, normalizeExtensionsKey, removeExtensionFromConfig} from '../../cli/common.ts';
-import {GENERATED_TREE_FILES, sourcePath, TREE_FILES, treeFilesFor} from '../../cli/manifest.ts';
+import { ensureExtensionInConfig, normalizeExtensionsKey, removeExtensionFromConfig } from '../../cli/common.ts';
+import { GENERATED_TREE_FILES, sourcePath, TREE_FILES, treeFilesFor } from '../../cli/manifest.ts';
 import {
-    readCavemanDefault,
-    readComboDefault,
-    readPluginSettings,
-    readRtkDefault,
-    saveComboSetup,
-    saveModeState,
+  readCavemanDefault,
+  readComboDefault,
+  readPluginSettings,
+  readRtkDefault,
+  saveComboSetup,
+  saveModeState,
 } from '../../extensions/shared/plugin-settings.ts';
-import type {HostDefaultField} from '../../cli/profile.ts';
-import {saveHostDefaults, storedProfileSync} from '../../cli/profile.ts';
-import {readUsageDb, syncUsageDb} from '../../extensions/shared/usage-store.ts';
-import {ruleBodyProblem} from '../../extensions/shared/utils.ts';
-import {sqliteExec} from '../../extensions/shared/sqlite.ts';
-import {cliEnv, fakeExecutable, fakeRtkBin, hasBun, hasSqlite, isWindows, withHome} from '../helpers/env.ts';
+import type { HostDefaultField } from '../../cli/profile.ts';
+import { saveHostDefaults, storedProfileSync } from '../../cli/profile.ts';
+import { readUsageDb, syncUsageDb } from '../../extensions/shared/usage-store.ts';
+import { ruleBodyProblem } from '../../extensions/shared/utils.ts';
+import { sqliteExec } from '../../extensions/shared/sqlite.ts';
+import { cliEnv, fakeExecutable, fakeRtkBin, hasBun, hasSqlite, isWindows, withHome } from '../helpers/env.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const installer = path.join(root, 'dist', 'tersio.js');
@@ -1882,38 +1882,42 @@ const PI_LOAD_ENTRIES = [
   '.pi/agent/ponytail/pi-extension/index.ts',
 ] as const;
 
-test.skipIf(!hasBun())('every pi extension entry loads from an installed tree alone', () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-pi-load-'));
-  try {
-    const install = spawnSync(process.execPath, [installer, 'install', '--host', 'pi', '--yes'], {
-      cwd: root,
-      encoding: 'utf8',
-      env: cliEnv(home),
-      timeout: 120_000,
-    });
-    expect(install.status, install.stderr).toBe(0);
+test.skipIf(!hasBun())(
+  'every pi extension entry loads from an installed tree alone',
+  () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-pi-load-'));
+    try {
+      const install = spawnSync(process.execPath, [installer, 'install', '--host', 'pi', '--yes'], {
+        cwd: root,
+        encoding: 'utf8',
+        env: cliEnv(home),
+        timeout: 120_000,
+      });
+      expect(install.status, install.stderr).toBe(0);
 
-    // Load each entry the way pi's jiti loader does, from the copied tree and nothing beside it.
-    const script = [
-      'const targets = JSON.parse(process.argv[1]);',
-      'for (const target of targets) {',
-      '  try { await import(target); }',
-      '  catch (error) {',
-      '    console.log(`${target}: ${error.message.split("\\n")[0]}`);',
-      '    process.exitCode = 1;',
-      '  }',
-      '}',
-    ].join('\n');
-    const targets = PI_LOAD_ENTRIES.map((rel) => path.join(home, rel));
-    const load = spawnSync('bun', ['-e', script, JSON.stringify(targets)], {
-      encoding: 'utf8',
-      env: cliEnv(home),
-      timeout: 120_000,
-    });
-    // A failure names the entry and the message, so the report says which import broke.
-    expect(load.stdout.trim(), load.stderr).toBe('');
-    expect(load.status, load.stderr).toBe(0);
-  } finally {
-    rmTree(home);
-  }
-}, 240_000);
+      // Load each entry the way pi's jiti loader does, from the copied tree and nothing beside it.
+      const script = [
+        'const targets = JSON.parse(process.argv[1]);',
+        'for (const target of targets) {',
+        '  try { await import(target); }',
+        '  catch (error) {',
+        '    console.log(`${target}: ${error.message.split("\\n")[0]}`);',
+        '    process.exitCode = 1;',
+        '  }',
+        '}',
+      ].join('\n');
+      const targets = PI_LOAD_ENTRIES.map((rel) => path.join(home, rel));
+      const load = spawnSync('bun', ['-e', script, JSON.stringify(targets)], {
+        encoding: 'utf8',
+        env: cliEnv(home),
+        timeout: 120_000,
+      });
+      // A failure names the entry and the message, so the report says which import broke.
+      expect(load.stdout.trim(), load.stderr).toBe('');
+      expect(load.status, load.stderr).toBe(0);
+    } finally {
+      rmTree(home);
+    }
+  },
+  240_000,
+);

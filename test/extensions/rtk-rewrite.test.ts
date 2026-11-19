@@ -1,5 +1,5 @@
-import {describe, expect, test} from 'vitest';
-import {isRtkCommand, rewriteThroughRtk, rewriteToolArguments} from '../../extensions/shared/rtk-rewrite.ts';
+import { describe, expect, test } from 'vitest';
+import { isRtkCommand, rewriteThroughRtk, rewriteToolArguments } from '../../extensions/shared/rtk-rewrite.ts';
 
 const rewriteTo = (next: string) => async () => next;
 
@@ -54,9 +54,9 @@ describe('rtk rewrite adapter', () => {
     const broken = async () => {
       throw new Error('rtk is missing');
     };
-    await expect(
-      rewriteToolArguments(['bash'], 'bash', { command: 'git status' }, true, broken),
-    ).rejects.toThrow('rtk is missing');
+    await expect(rewriteToolArguments(['bash'], 'bash', { command: 'git status' }, true, broken)).rejects.toThrow(
+      'rtk is missing',
+    );
   });
 });
 
@@ -82,7 +82,9 @@ describe('asking rtk for a rewrite', () => {
     await expect(rewriteThroughRtk('journalctl -u nginx', { bin: '/bin/rtk', exec: pass })).resolves.toBeNull();
     await expect(rewriteThroughRtk('journalctl -u nginx', { bin: '/bin/rtk', exec: hostPass })).resolves.toBeNull();
     await expect(rewriteThroughRtk('git status', { bin: '/bin/rtk', exec: deny })).rejects.toThrow('blocked by RTK');
-    await expect(rewriteThroughRtk('git status', { bin: '/bin/rtk', exec: hostDeny })).rejects.toThrow('blocked by RTK');
+    await expect(rewriteThroughRtk('git status', { bin: '/bin/rtk', exec: hostDeny })).rejects.toThrow(
+      'blocked by RTK',
+    );
     await expect(rewriteThroughRtk('git status', { bin: null })).rejects.toThrow('rtk is not installed');
   });
 

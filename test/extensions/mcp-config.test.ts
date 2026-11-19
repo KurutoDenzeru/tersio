@@ -1,16 +1,16 @@
-import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
-import {expect, test} from 'vitest';
+import { fileURLToPath } from 'node:url';
+import { expect, test } from 'vitest';
 import {
-    ensureTersioMcp,
-    removeTersioMcp,
-    spliceTopLevelKey,
-    tersioMcpConfigured,
-    tersioMcpFile,
-    tersioMcpSupported,
+  ensureTersioMcp,
+  removeTersioMcp,
+  spliceTopLevelKey,
+  tersioMcpConfigured,
+  tersioMcpFile,
+  tersioMcpSupported,
 } from '../../extensions/shared/mcp-config.ts';
-import {withHome} from '../helpers/env.ts';
+import { withHome } from '../helpers/env.ts';
 
 /**
  * The entry, in whichever shape this machine produces: bun on PATH runs the entry point directly,

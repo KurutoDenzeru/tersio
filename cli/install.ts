@@ -1,137 +1,138 @@
 // cli/install.ts — install flow and all setup steps.
-import {existsSync, promises as fs} from 'node:fs';
+import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
-import type {InstallOptions, WriteOptions} from './common.ts';
+import type { InstallOptions, WriteOptions } from './common.ts';
 import {
-    applyUpdate,
-    args,
-    assumeYes,
-    BUN_BIN,
-    cavemanDefaultFlag,
-    codegraphDefaultFlag,
-    codegraphSyncFlag,
-    COMBO_PRESET_MODES,
-    comboDefaultFlag,
-    command,
-    currency,
-    dashboardExport,
-    dashboardPort,
-    debug,
-    dryRun,
-    ensurePonytailConfigValue,
-    execP,
-    headroomDefaultFlag,
-    HOME,
-    IS_WINDOWS,
-    NPM_BIN,
-    OMP_AGENT_DIR,
-    OMP_BIN,
-    OMP_PLUGINS_DIR,
-    PACKAGE_NAME,
-    PACKAGE_VERSION,
-    parseJsonObject,
-    ponytailDefaultFlag,
-    profileFlagsGiven,
-    pstackDefaultFlag,
-    readPluginsPackage,
-    rtkDefaultFlag,
-    verbose,
-    writeIfChanged,
-    yes,
+  applyUpdate,
+  args,
+  assumeYes,
+  BUN_BIN,
+  cavemanDefaultFlag,
+  codegraphDefaultFlag,
+  codegraphSyncFlag,
+  COMBO_PRESET_MODES,
+  comboDefaultFlag,
+  command,
+  currency,
+  dashboardExport,
+  dashboardPort,
+  debug,
+  dryRun,
+  ensurePonytailConfigValue,
+  execP,
+  headroomDefaultFlag,
+  HOME,
+  IS_WINDOWS,
+  NPM_BIN,
+  OMP_AGENT_DIR,
+  OMP_BIN,
+  OMP_PLUGINS_DIR,
+  PACKAGE_NAME,
+  PACKAGE_VERSION,
+  parseJsonObject,
+  ponytailDefaultFlag,
+  profileFlagsGiven,
+  pstackDefaultFlag,
+  readPluginsPackage,
+  rtkDefaultFlag,
+  verbose,
+  writeIfChanged,
+  yes,
 } from './common.ts';
 import {
-    askInteractiveChoice,
-    askInteractiveConfirm,
-    closeRL,
-    execNetwork,
-    sayTagged,
-    tty,
-    withInteractiveSpinner,
+  askInteractiveChoice,
+  askInteractiveConfirm,
+  closeRL,
+  execNetwork,
+  sayTagged,
+  tty,
+  withInteractiveSpinner,
 } from './interactive.ts';
-import {printWelcome} from './banner.ts';
-import {checkForUpdate, newerThan, runLatestUpdate} from './update.ts';
-import {runUninstall} from './uninstall.ts';
-import {claudeLocalMarketplaceRoot, claudeLocalPluginFiles} from '../extensions/shared/claude-plugin.ts';
+import { printWelcome } from './banner.ts';
+import { checkForUpdate, newerThan, runLatestUpdate } from './update.ts';
+import { runUninstall } from './uninstall.ts';
+import { claudeLocalMarketplaceRoot, claudeLocalPluginFiles } from '../extensions/shared/claude-plugin.ts';
 import {
-    CLAUDE_MARKETPLACE_NAME,
-    CLAUDE_PLUGIN_ID,
-    installedClaudePlugin,
-    setClaudeRtkHook,
+  CLAUDE_MARKETPLACE_NAME,
+  CLAUDE_PLUGIN_ID,
+  installedClaudePlugin,
+  setClaudeRtkHook,
 } from '../extensions/shared/claude-state.ts';
-import {runDoctor} from './doctor.ts';
-import {runDashboard} from './dashboard.ts';
-import {wireRtk} from './rtk-wiring.ts';
+import { runDoctor } from './doctor.ts';
+import { runDashboard } from './dashboard.ts';
+import { wireRtk } from './rtk-wiring.ts';
 import {
-    findPackageRoot,
-    homeDir,
-    piAgentDir,
-    pigAgentDir,
-    readTextIfExists,
-    resolveCodexBinary,
-    resolveHeadroomBinary,
-    resolveHostBinary,
-    resolveRtkBinary,
-    RTK_INSTALL_DOCS,
-    shimCommand,
+  findPackageRoot,
+  homeDir,
+  piAgentDir,
+  pigAgentDir,
+  readTextIfExists,
+  resolveCodexBinary,
+  resolveHeadroomBinary,
+  resolveHostBinary,
+  resolveRtkBinary,
+  RTK_INSTALL_DOCS,
+  shimCommand,
 } from '../extensions/shared/utils.ts';
-import {patchState} from '../extensions/shared/state.ts';
-import {CAVEMAN_PIN} from './upstream.ts';
-import {headroomHostSupported, headroomProxyUrl} from '../extensions/shared/headroom-proxy.ts';
-import {ensureTersioMcp, tersioMcpConfigured, tersioMcpSupported} from '../extensions/shared/mcp-config.ts';
-import {ensureHeadroomRuntime, headroomFitsMachine} from '../extensions/shared/headroom-runtime.ts';
-import {resolveCodeGraphLibrary} from '../extensions/codegraph/shared.ts';
-import {installCodeGraphBundle} from '../extensions/codegraph/install.ts';
-import {headroomRouteUpstreams, routeHostOn} from '../extensions/shared/headroom-routes.ts';
-import type {HostDefaultField, Profile} from './profile.ts';
-import {formatCliStatus, saveHostDefaults, storedProfile, storedProfileSync, writePluginSettings} from './profile.ts';
-import type {CodegraphSyncMode} from '../extensions/shared/plugin-settings.ts';
-import {readRtkDefault, tersioSettingsFile} from '../extensions/shared/plugin-settings.ts';
+import { patchState } from '../extensions/shared/state.ts';
+import { CAVEMAN_PIN } from './upstream.ts';
+import { headroomHostSupported, headroomProxyUrl } from '../extensions/shared/headroom-proxy.ts';
+import { ensureTersioMcp, tersioMcpConfigured, tersioMcpSupported } from '../extensions/shared/mcp-config.ts';
+import { ensureHeadroomRuntime, headroomFitsMachine } from '../extensions/shared/headroom-runtime.ts';
+import { resolveCodeGraphLibrary } from '../extensions/codegraph/shared.ts';
+import { installCodeGraphBundle } from '../extensions/codegraph/install.ts';
+import { headroomRouteUpstreams, routeHostOn } from '../extensions/shared/headroom-routes.ts';
+import type { HostDefaultField, Profile } from './profile.ts';
+import { formatCliStatus, saveHostDefaults, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
+import type { CodegraphSyncMode } from '../extensions/shared/plugin-settings.ts';
+import { supportsCodegraph } from '../extensions/shared/plugin-settings.ts';
+import { readRtkDefault, tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import {
-    EXT_DIR,
-    filesUnder,
-    PI_PONYTAIL_FILES,
-    PI_RTK_MANIFEST,
-    PONYTAIL_BUNDLE_FILES,
-    PONYTAIL_DIR,
-    PONYTAIL_PKG,
-    reapObsoleteTreeDirs,
-    rootFiles,
-    sourcePath,
-    syncPluginManifest,
-    syncTreeFiles,
+  EXT_DIR,
+  filesUnder,
+  PI_PONYTAIL_FILES,
+  PI_RTK_MANIFEST,
+  PONYTAIL_BUNDLE_FILES,
+  PONYTAIL_DIR,
+  PONYTAIL_PKG,
+  reapObsoleteTreeDirs,
+  rootFiles,
+  sourcePath,
+  syncPluginManifest,
+  syncTreeFiles,
 } from './manifest.ts';
-import type {HostEntry} from './hosts.ts';
+import type { HostEntry } from './hosts.ts';
 import {
-    detectHosts,
-    dshCliProfiles,
-    dshDesktopProfilePresent,
-    dshHome,
-    dshPresent,
-    dshProfileBundles,
-    dshRunner,
-    hostOptions,
-    parseHostArg,
-    pigTersioSource,
-    piTersioSource,
-    writeDshMcpCommand,
+  detectHosts,
+  dshCliProfiles,
+  dshDesktopProfilePresent,
+  dshHome,
+  dshPresent,
+  dshProfileBundles,
+  dshRunner,
+  hostOptions,
+  parseHostArg,
+  pigTersioSource,
+  piTersioSource,
+  writeDshMcpCommand,
 } from './hosts.ts';
-import type {HostId} from '../extensions/shared/host-caps.ts';
-import {hostCap} from '../extensions/shared/host-caps.ts';
+import type { HostId } from '../extensions/shared/host-caps.ts';
+import { hostCap } from '../extensions/shared/host-caps.ts';
 import {
-    CODEX_MARKETPLACE_NAME,
-    CODEX_PLUGIN_ID,
-    codexHome,
-    codexHookCommand,
-    codexLocalMarketplaceRoot,
-    codexLocalPluginFiles,
-    codexPluginInstalled,
-    codexPromptFiles,
-    codexPromptsDir,
-    codexUserHooksFile,
-    ensureCodexUserHook,
-    installedCodexPlugin,
+  CODEX_MARKETPLACE_NAME,
+  CODEX_PLUGIN_ID,
+  codexHome,
+  codexHookCommand,
+  codexLocalMarketplaceRoot,
+  codexLocalPluginFiles,
+  codexPluginInstalled,
+  codexPromptFiles,
+  codexPromptsDir,
+  codexUserHooksFile,
+  ensureCodexUserHook,
+  installedCodexPlugin,
 } from '../extensions/shared/codex-plugin.ts';
-import {codexPackagedPluginDir} from '../extensions/shared/codex-state.ts';
+import { codexPackagedPluginDir } from '../extensions/shared/codex-state.ts';
 
 async function stepPonytail(pluginsDir: string, options: InstallOptions): Promise<void> {
   // Ponytail rides inside this package now. An older install carried it as its own dependency, which a host then listed as a second plugin, so drop that entry and its sibling copy.
@@ -546,7 +547,7 @@ async function stepOpencode(options: InstallOptions): Promise<void> {
   config.plugins = kept;
   if (!options.dryRun) {
     await fs.mkdir(path.dirname(configPath), { recursive: true });
-    await fs.rm(path.join(HOME, '.config', 'opencode', 'plugins', 'rtk.ts'), { force: true }).catch(() => { });
+    await fs.rm(path.join(HOME, '.config', 'opencode', 'plugins', 'rtk.ts'), { force: true }).catch(() => {});
   }
   // The user's own config, so keep the previous copy beside it.
   await writeIfChanged(configPath, `${JSON.stringify(config, null, 2)}\n`, { ...options, backup: true });
@@ -758,10 +759,7 @@ async function lifecycleHeadroom(host: HostId, enabled: boolean, profile: Profil
   if (dryRun || !headroomHostSupported(host) || (!enabled && profile.headroomDefault !== 'on')) return;
   try {
     // The config points the agent at the proxy, so the runtime starts first, forwarding what the route needs.
-    const runtime = await ensureHeadroomRuntime(
-      bin,
-      hostCap(host)?.headroomGateway ? headroomRouteUpstreams(host) : {},
-    );
+    const runtime = await ensureHeadroomRuntime(bin, headroomRouteUpstreams(host));
     if (!runtime.ok) throw new Error(runtime.detail);
     // One writer per agent, all of them Tersio's: the route is written and put back here.
     const routed = await routeHostOn(host, headroomProxyUrl());
@@ -844,12 +842,12 @@ async function runCommandMenu(): Promise<void> {
       const targets: Array<{ value: string; label: string; hint?: string }> = [
         ...(installed.length > 0
           ? [
-            {
-              value: 'agents',
-              label: 'AI agents',
-              hint: `${installed.map((host) => host.label).join(', ')} — pick one next`,
-            },
-          ]
+              {
+                value: 'agents',
+                label: 'AI agents',
+                hint: `${installed.map((host) => host.label).join(', ')} — pick one next`,
+              },
+            ]
           : []),
         { value: 'cli', label: 'Tersio CLI only', hint: 'leave agent extensions as they are' },
       ];
@@ -1383,7 +1381,7 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
     else console.log(hint);
     closeRL();
   };
-  if (['omp', 'pi', 'pig', 'opencode'].includes(targetHost) && profile.codegraphDefault === 'on' && !resolveCodeGraphLibrary()) {
+  if (supportsCodegraph(targetHost) && profile.codegraphDefault === 'on' && !resolveCodeGraphLibrary()) {
     await capture('CodeGraph runtime', async () => {
       if (dryRun) {
         if (!quiet) sayTagged('  [dry-run] would install the CodeGraph runtime');

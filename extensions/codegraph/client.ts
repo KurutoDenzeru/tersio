@@ -1,14 +1,14 @@
-import {type ChildProcess, fork} from 'node:child_process';
-import {existsSync} from 'node:fs';
+import { type ChildProcess, fork } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
-import {resolveHostBinary} from '../shared/utils.ts';
-import {CODEGRAPH_WRITE_TOOLS, findRepoRoot, resolveCodeGraphLibrary} from './shared.ts';
-import type {HostScope} from '../shared/plugin-settings.ts';
-import {readCodegraphDefault, readCodegraphSync} from '../shared/plugin-settings.ts';
-import {clearWatcherStatus, readWatcherStatus, writeWatcherStatus} from './status-file.ts';
-import {installCodeGraphBundle} from './install.ts';
-import type {CodeGraphStats, CodeGraphStatus, ExploreResult} from './types.ts';
+import { fileURLToPath } from 'node:url';
+import { resolveHostBinary } from '../shared/utils.ts';
+import { CODEGRAPH_WRITE_TOOLS, findRepoRoot, resolveCodeGraphLibrary } from './shared.ts';
+import type { HostScope } from '../shared/plugin-settings.ts';
+import { readCodegraphDefault, readCodegraphSync } from '../shared/plugin-settings.ts';
+import { clearWatcherStatus, readWatcherStatus, writeWatcherStatus } from './status-file.ts';
+import { installCodeGraphBundle } from './install.ts';
+import type { CodeGraphStats, CodeGraphStatus, ExploreResult } from './types.ts';
 
 type Request =
   | { op: 'ensure' | 'status' | 'sync' | 'index' | 'stop'; root: string }
@@ -63,7 +63,9 @@ function startWorker(): Worker {
   const lib = resolveCodeGraphLibrary();
   if (!lib) throw new Error('CodeGraph bundle is not installed.');
   const bundledNode = path.resolve(path.dirname(lib), '..', '..', process.platform === 'win32' ? 'node.exe' : 'node');
-  const node = existsSync(bundledNode) ? bundledNode : resolveHostBinary(process.platform === 'win32' ? 'node.exe' : 'node');
+  const node = existsSync(bundledNode)
+    ? bundledNode
+    : resolveHostBinary(process.platform === 'win32' ? 'node.exe' : 'node');
   if (!node) throw new Error('CodeGraph requires Node.js 22.5 or later.');
   const sourceEntry = fileURLToPath(new URL('./worker.ts', import.meta.url));
   const entry = existsSync(sourceEntry) ? sourceEntry : fileURLToPath(new URL('./worker.js', import.meta.url));
@@ -134,7 +136,7 @@ function bootstrapRuntime(root: string, report?: (message: string) => void): voi
     });
   }
   const fail = (entry: string, callback: ((message: string) => void) | undefined, error: unknown): void => {
-    const message = error instanceof Error ? error.message.split('\n')[0] ?? error.name : String(error);
+    const message = error instanceof Error ? (error.message.split('\n')[0] ?? error.name) : String(error);
     publishBootstrapStatus(entry, message);
     bootstrapRetryAfter.set(entry, Date.now() + 60_000);
     try {
@@ -154,7 +156,8 @@ function bootstrapRuntime(root: string, report?: (message: string) => void): voi
       for (const [entry, callback] of state.roots) {
         if (state.controller.signal.aborted) break;
         try {
-          if (!(await request<boolean>({ op: 'ensure', root: entry }))) throw new Error('CodeGraph could not start indexing.');
+          if (!(await request<boolean>({ op: 'ensure', root: entry })))
+            throw new Error('CodeGraph could not start indexing.');
           clearWatcherStatus(entry);
           bootstrapStatusRoots.delete(entry);
           bootstrapRetryAfter.delete(entry);
@@ -174,11 +177,19 @@ function bootstrapRuntime(root: string, report?: (message: string) => void): voi
   })();
 }
 
-export async function ensureInitializedAndWatching(root = process.cwd(), report?: (message: string) => void): Promise<boolean> {
+export async function ensureInitializedAndWatching(
+  root = process.cwd(),
+  report?: (message: string) => void,
+): Promise<boolean> {
   const project = findRepoRoot(root);
   if (!project) return false;
   if (!resolveCodeGraphLibrary()) {
-    if (process.env.PI_OFFLINE === '1' || process.env.CODEGRAPH_LIB_PATH || (bootstrapRetryAfter.get(project) ?? 0) > Date.now()) return false;
+    if (
+      process.env.PI_OFFLINE === '1' ||
+      process.env.CODEGRAPH_LIB_PATH ||
+      (bootstrapRetryAfter.get(project) ?? 0) > Date.now()
+    )
+      return false;
     bootstrapRuntime(project, report);
     return true;
   }
@@ -189,7 +200,11 @@ export async function getCodeGraphStatus(root = process.cwd()): Promise<CodeGrap
   if (!resolveCodeGraphLibrary()) {
     const observed = readWatcherStatus(findRepoRoot(root) ?? root);
     return {
-      initialized: false, nodeCount: 0, edgeCount: 0, fileCount: 0, dbSizeBytes: 0,
+      initialized: false,
+      nodeCount: 0,
+      edgeCount: 0,
+      fileCount: 0,
+      dbSizeBytes: 0,
       isWatching: observed?.isWatching ?? false,
       isIndexing: observed?.isIndexing ?? false,
       watcherObserved: observed !== null,
@@ -209,8 +224,12 @@ export async function getCodeGraphStatus(root = process.cwd()): Promise<CodeGrap
 
 export const syncCodeGraph = (root = process.cwd()): Promise<CodeGraphStats | null> => request({ op: 'sync', root });
 export const indexCodeGraph = (root = process.cwd()): Promise<CodeGraphStats> => request({ op: 'index', root });
-export const exploreSymbol = (query: string, root = process.cwd()): Promise<ExploreResult> => request({ op: 'explore', root, query });
-export async function getComplexityScore(query: string, root = process.cwd()): Promise<{ maxBlastRadius: number; affectedFiles: number }> {
+export const exploreSymbol = (query: string, root = process.cwd()): Promise<ExploreResult> =>
+  request({ op: 'explore', root, query });
+export async function getComplexityScore(
+  query: string,
+  root = process.cwd(),
+): Promise<{ maxBlastRadius: number; affectedFiles: number }> {
   try {
     return await request({ op: 'complexity', root, query });
   } catch {
@@ -235,5 +254,7 @@ export function onToolFinished(tool: string, isError: boolean, root: string, hos
   const name = tool.toLowerCase();
   if (CODEGRAPH_WRITE_TOOLS[name] !== true && name !== 'bash' && name !== 'shell') return;
   const ready = worker?.child.connected ? Promise.resolve(true) : ensureInitializedAndWatching(root);
-  void ready.then((ok) => ok ? request({ op: 'tool', root, tool, isError, host: host ?? null }) : undefined).catch(() => undefined);
+  void ready
+    .then((ok) => (ok ? request({ op: 'tool', root, tool, isError, host: host ?? null }) : undefined))
+    .catch(() => undefined);
 }

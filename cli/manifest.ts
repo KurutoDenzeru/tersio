@@ -1,11 +1,11 @@
 // Single list of install writes, shared by installer, doctor, and tests.
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import {readdirSync, readFileSync} from 'node:fs';
-import {fileURLToPath} from 'node:url';
-import {findPackageRoot, readTextIfExists} from '../extensions/shared/utils.ts';
-import type {WriteOptions} from './common.ts';
-import {writeIfChanged} from './common.ts';
+import { readdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { findPackageRoot, readTextIfExists } from '../extensions/shared/utils.ts';
+import type { WriteOptions } from './common.ts';
+import { writeIfChanged } from './common.ts';
 
 export const EXT_DIR = path.join(findPackageRoot(path.dirname(fileURLToPath(import.meta.url))), 'extensions');
 

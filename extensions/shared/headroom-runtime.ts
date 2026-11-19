@@ -1,22 +1,22 @@
 // Headroom's runtime, not its configuration. A durable switch points an agent at the local proxy,
 // so the proxy has to answer before the switch is written; otherwise the agent talks to a dead port.
-import {execFile, execFileSync, spawn} from 'node:child_process';
-import {randomUUID} from 'node:crypto';
-import {existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync} from 'node:fs';
+import { execFile, execFileSync, spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import {promisify} from 'node:util';
+import { promisify } from 'node:util';
 import {
-    HEADROOM_UPSTREAM_ENV,
-    HEADROOM_UPSTREAM_FLAG,
-    headroomProxyPort,
-    headroomProxyUrl,
-    type HeadroomUpstreams,
-    UPSTREAM_DIALECTS,
-    upstreamEntries,
-    upstreamMismatches,
+  HEADROOM_UPSTREAM_ENV,
+  HEADROOM_UPSTREAM_FLAG,
+  headroomProxyPort,
+  headroomProxyUrl,
+  type HeadroomUpstreams,
+  UPSTREAM_DIALECTS,
+  upstreamEntries,
+  upstreamMismatches,
 } from './headroom-proxy.ts';
-import {cacheGet, cachePut} from './cache-store.ts';
-import {homeDir, resolveHeadroomBinary, tersioHome} from './utils.ts';
+import { cacheGet, cachePut } from './cache-store.ts';
+import { homeDir, resolveHeadroomBinary, tersioHome } from './utils.ts';
 
 export { headroomProxyPort, headroomProxyUrl };
 
@@ -123,11 +123,7 @@ function rawProxyPids(): number[] {
 /** Match the Python launcher in argv: `ps comm` reports `headroom` for console-script processes. */
 function isPythonProcess(pid: number): boolean {
   const argv = proxyArgvOf(pid);
-  return (
-    argv !== null &&
-    /(?:^|\/)python(?:\d+(?:\.\d+)*)?(?=\s)/i.test(argv) &&
-    /headroom(?:\.cli)? proxy/.test(argv)
-  );
+  return argv !== null && /(?:^|\/)python(?:\d+(?:\.\d+)*)?(?=\s)/i.test(argv) && /headroom(?:\.cli)? proxy/.test(argv);
 }
 
 /** The argv of one proxy process, or null when this platform will not say. */
@@ -600,7 +596,6 @@ function dropLease(sessionId: string): void {
   writeLeases(leases);
 }
 
-
 /** Refresh this session's lease; a long session must not let it expire. */
 export function touchHeadroomLease(sessionId: string): void {
   writeLease(sessionId);
@@ -615,18 +610,27 @@ export async function releaseHeadroomLease(sessionId: string): Promise<HeadroomR
 let pending: Promise<HeadroomRuntimeResult> | null = null;
 
 /** Start headroom's runtime once, or report why it could not answer. Concurrent callers share one start. */
-export async function ensureHeadroomRuntime(bin: string, upstreams: HeadroomUpstreams = {}): Promise<HeadroomRuntimeResult> {
+export async function ensureHeadroomRuntime(
+  bin: string,
+  upstreams: HeadroomUpstreams = {},
+): Promise<HeadroomRuntimeResult> {
   if (await headroomRuntimeUp()) {
     // The saved deployment says nothing about what the running process forwards, so only its live argv counts.
     if (upstreamMismatches(upstreams, liveHeadroomUpstreams()).length === 0)
       return { ok: true, detail: 'headroom proxy already running' };
-    return { ok: false, detail: 'shared headroom proxy has different upstreams; the existing runtime was left running' };
+    return {
+      ok: false,
+      detail: 'shared headroom proxy has different upstreams; the existing runtime was left running',
+    };
   }
   const startLockOwner = acquireStartLock();
   if (startLockOwner === null) {
     const reclaim = `${startLockFile()}.reclaim`;
     if (existsSync(reclaim) && !startLockOwnerIsAlive(path.join(reclaim, 'owner'))) {
-      return { ok: false, detail: `headroom recovery is blocked by ${reclaim}; verify no reclaimer is active before removing it` };
+      return {
+        ok: false,
+        detail: `headroom recovery is blocked by ${reclaim}; verify no reclaimer is active before removing it`,
+      };
     }
     // Another Tersio process is starting it: wait for that one instead of racing into a second proxy.
     return (await waitForRuntime())

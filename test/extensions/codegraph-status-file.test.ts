@@ -1,9 +1,9 @@
-import {createHash} from 'node:crypto';
-import {existsSync, mkdirSync, readdirSync, realpathSync, writeFileSync} from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import {expect, test} from 'vitest';
-import {clearWatcherStatus, readWatcherStatus, writeWatcherStatus} from '../../extensions/codegraph/status-file.ts';
-import {withHome} from '../helpers/env.ts';
+import { expect, test } from 'vitest';
+import { clearWatcherStatus, readWatcherStatus, writeWatcherStatus } from '../../extensions/codegraph/status-file.ts';
+import { withHome } from '../helpers/env.ts';
 
 test('watcher status combines live processes and ignores stale status files', () => {
   withHome((home) => {

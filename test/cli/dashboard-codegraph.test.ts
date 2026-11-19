@@ -1,11 +1,11 @@
-import {afterAll, beforeAll, describe, expect, test} from 'vitest';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
-import {handleCodeGraphRoutes} from '../../cli/dashboard-codegraph.ts';
-import {stopWatching} from '../../extensions/codegraph/client.ts';
-import {type CodeGraphTestFixture, createCodeGraphTestFixture} from '../helpers/codegraph.ts';
+import { handleCodeGraphRoutes } from '../../cli/dashboard-codegraph.ts';
+import { stopWatching } from '../../extensions/codegraph/client.ts';
+import { type CodeGraphTestFixture, createCodeGraphTestFixture } from '../helpers/codegraph.ts';
 
 describe('dashboard CodeGraph routes', () => {
   let fixture: CodeGraphTestFixture;
@@ -25,7 +25,7 @@ describe('dashboard CodeGraph routes', () => {
     const req = { url: '/api/unknown', method: 'GET' } as http.IncomingMessage;
     const res = {} as http.ServerResponse;
     const ctx = {
-      json: () => { },
+      json: () => {},
       bodyOf: async () => ({}),
     };
     const handled = await handleCodeGraphRoutes(req, res, ctx);
@@ -33,7 +33,10 @@ describe('dashboard CodeGraph routes', () => {
   });
 
   test('GET /api/codegraph/status returns index status for a directory', async () => {
-    const req = { url: `/api/codegraph/status?root=${encodeURIComponent(tmpDir)}`, method: 'GET' } as http.IncomingMessage;
+    const req = {
+      url: `/api/codegraph/status?root=${encodeURIComponent(tmpDir)}`,
+      method: 'GET',
+    } as http.IncomingMessage;
     const res = {} as http.ServerResponse;
     let statusCode = 0;
     let payload: Record<string, unknown> = {};
@@ -89,7 +92,10 @@ describe('dashboard CodeGraph routes', () => {
 
   test('refuses a root that is not a git checkout or CodeGraph index', async () => {
     const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'test-cg-plain-'));
-    const req = { url: `/api/codegraph/status?root=${encodeURIComponent(plain)}`, method: 'GET' } as http.IncomingMessage;
+    const req = {
+      url: `/api/codegraph/status?root=${encodeURIComponent(plain)}`,
+      method: 'GET',
+    } as http.IncomingMessage;
     let statusCode = 0;
     const ctx = {
       projectRoot: tmpDir,
@@ -109,18 +115,29 @@ describe('dashboard CodeGraph routes', () => {
     let code = 0;
     const ctx = {
       projectRoot: tmpDir,
-      json: (_res: unknown, status: number) => { code = status; },
+      json: (_res: unknown, status: number) => {
+        code = status;
+      },
       bodyOf: async () => ({ root: other }),
     };
     try {
-      const another = { url: `/api/codegraph/status?root=${encodeURIComponent(other)}`, method: 'GET' } as http.IncomingMessage;
+      const another = {
+        url: `/api/codegraph/status?root=${encodeURIComponent(other)}`,
+        method: 'GET',
+      } as http.IncomingMessage;
       await handleCodeGraphRoutes(another, {} as http.ServerResponse, ctx);
       expect(code).toBe(400);
-      const remote = { url: '/api/codegraph/init', method: 'POST', socket: { remoteAddress: '192.0.2.10' } } as http.IncomingMessage;
+      const remote = {
+        url: '/api/codegraph/init',
+        method: 'POST',
+        socket: { remoteAddress: '192.0.2.10' },
+      } as http.IncomingMessage;
       await handleCodeGraphRoutes(remote, {} as http.ServerResponse, ctx);
       expect(code).toBe(403);
       const crossOrigin = {
-        url: '/api/codegraph/sync', method: 'POST', socket: { remoteAddress: '127.0.0.1' },
+        url: '/api/codegraph/sync',
+        method: 'POST',
+        socket: { remoteAddress: '127.0.0.1' },
         headers: { origin: 'https://untrusted.example', host: '127.0.0.1:3000' },
       } as http.IncomingMessage;
       await handleCodeGraphRoutes(crossOrigin, {} as http.ServerResponse, ctx);

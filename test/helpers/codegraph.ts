@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {resolveCodeGraphLibrary} from '../../extensions/codegraph/shared.ts';
 
 const fakeCodeGraph = String.raw`const fs = require('node:fs');
 const path = require('node:path');
@@ -119,7 +118,6 @@ export interface CodeGraphTestFixture {
 }
 
 export function createCodeGraphTestFixture(): CodeGraphTestFixture {
-  const installedLibrary = resolveCodeGraphLibrary();
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tersio-codegraph-test-'));
   const projectRoot = path.join(tempDir, 'project');
   const home = path.join(tempDir, 'home');
@@ -137,7 +135,8 @@ export function createCodeGraphTestFixture(): CodeGraphTestFixture {
   process.env.HOME = home;
   process.env.USERPROFILE = home;
   process.env.TERSIO_HOME = path.join(home, '.tersio');
-  process.env.CODEGRAPH_LIB_PATH = installedLibrary ?? library;
+  // Always the fake: a bundle installed on the host must never take part in the tests.
+  process.env.CODEGRAPH_LIB_PATH = library;
   let cleaned = false;
 
   return {
@@ -151,7 +150,8 @@ export function createCodeGraphTestFixture(): CodeGraphTestFixture {
         if (value === undefined) delete process.env[name];
         else process.env[name] = value;
       }
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      // Windows keeps the copied node.exe locked for a moment after its child exits.
+      fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     },
   };
 }

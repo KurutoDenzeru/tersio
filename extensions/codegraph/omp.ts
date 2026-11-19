@@ -2,53 +2,102 @@
 // Injects native tools directly into OmpApi without MCP process overhead.
 
 import {
-    ensureInitializedAndWatching,
-    exploreSymbol,
-    getCodeGraphStatus,
-    indexCodeGraph,
-    onToolFinished,
-    stopWatching,
-    syncCodeGraph
+  ensureInitializedAndWatching,
+  exploreSymbol,
+  getCodeGraphStatus,
+  indexCodeGraph,
+  onToolFinished,
+  stopWatching,
+  syncCodeGraph,
 } from './client.ts';
-import {findRepoRoot, resolveCodeGraphLibrary} from './shared.ts';
-import {readCodegraphDefault} from '../shared/plugin-settings.ts';
-import {hostIdOf} from '../shared/host.ts';
-import type {ExtensionApi, ExtensionCtx, ToolResultEvent} from '../shared/types.ts';
+import { findRepoRoot, resolveCodeGraphLibrary } from './shared.ts';
+import { readCodegraphDefault } from '../shared/plugin-settings.ts';
+import { hostIdOf } from '../shared/host.ts';
+import type { ExtensionApi, ExtensionCtx, ToolResultEvent } from '../shared/types.ts';
+
+interface ZodChain {
+  describe(text: string): ZodChain;
+}
+interface ZodFactory {
+  object(shape: Record<string, ZodChain>): unknown;
+  string(): ZodChain;
+}
+
+/** OMP validates tool arguments with zod; pi and OpenCode take plain JSON Schema. */
+function queryParameters(pi: ExtensionApi): unknown {
+  const description = 'Symbol name, function name, class, or search query to explore.';
+  if (pi.zod) {
+    const { z } = pi.zod as { z: ZodFactory };
+    return z.object({ query: z.string().describe(description) });
+  }
+  return { type: 'object', properties: { query: { type: 'string', description } }, required: ['query'] };
+}
+
+function emptyParameters(pi: ExtensionApi): unknown {
+  if (pi.zod) {
+    const { z } = pi.zod as { z: ZodFactory };
+    return z.object({});
+  }
+  return { type: 'object', properties: {} };
+}
 
 export default function codegraphExtension(pi: ExtensionApi): void {
   let bootstrapNotice = false;
+  let unavailableNotice = false;
+  // Roots whose watcher this session already started, so a prompt does not retry a failed build every turn.
+  const started = new Set<string>();
   const host = hostIdOf(pi);
 
   // Session hooks start the index and watcher only where CodeGraph is on. Tools and the command stay registered either way.
-  const onSession = async (_event: unknown, ctx?: ExtensionCtx) => {
-    if (readCodegraphDefault(host) !== 'on') return;
+  const startSession = async (ctx: ExtensionCtx | undefined, perPrompt: boolean) => {
     const cwd = ctx?.cwd ?? pi.cwd ?? process.cwd();
-    if (!findRepoRoot(cwd)) return;
+    if (readCodegraphDefault(host) !== 'on') {
+      // Switched off mid-session: the worker and its sync timer must not keep running.
+      const root = findRepoRoot(cwd);
+      if (root && started.delete(root)) await stopWatching(cwd).catch(() => undefined);
+      return;
+    }
+    const root = findRepoRoot(cwd);
+    if (!root) return;
+    if (perPrompt && started.has(root)) return;
     try {
       const missing = !resolveCodeGraphLibrary();
       const accepted = await ensureInitializedAndWatching(cwd, (message) => {
         bootstrapNotice = false;
         ctx?.ui?.notify?.(`CodeGraph installation failed: ${message}`, 'warning');
       });
+      if (accepted) {
+        started.add(root);
+        unavailableNotice = false;
+      }
       if (!accepted) {
-        ctx?.ui?.notify?.('CodeGraph runtime is unavailable; automatic indexing could not start.', 'warning');
+        if (!unavailableNotice) {
+          unavailableNotice = true;
+          ctx?.ui?.notify?.('CodeGraph runtime is unavailable; automatic indexing could not start.', 'warning');
+        }
       } else if (missing && !bootstrapNotice) {
         ctx?.ui?.notify?.('CodeGraph is installing its runtime in the background.', 'info');
         bootstrapNotice = true;
       }
       if (!missing) bootstrapNotice = false;
     } catch (error) {
-      ctx?.ui?.notify?.(`CodeGraph could not start: ${error instanceof Error ? error.message : String(error)}`, 'warning');
+      ctx?.ui?.notify?.(
+        `CodeGraph could not start: ${error instanceof Error ? error.message : String(error)}`,
+        'warning',
+      );
     }
   };
-  pi.on?.('before_agent_start', onSession);
-  pi.on?.('session_start', onSession);
+  pi.on?.('before_agent_start', (_event: unknown, ctx?: ExtensionCtx) => startSession(ctx, true));
+  pi.on?.('session_start', (_event: unknown, ctx?: ExtensionCtx) => startSession(ctx, false));
   for (const eventName of ['session_tree', 'session_switch', 'session_branch']) {
-    pi.on?.(eventName, onSession);
+    pi.on?.(eventName, (_event: unknown, ctx?: ExtensionCtx) => startSession(ctx, false));
   }
   if (host !== 'opencode') {
     pi.on?.('session_shutdown', async (_event: unknown, ctx?: ExtensionCtx) => {
-      await stopWatching(ctx?.cwd ?? pi.cwd ?? process.cwd());
+      const cwd = ctx?.cwd ?? pi.cwd ?? process.cwd();
+      const root = findRepoRoot(cwd);
+      if (root) started.delete(root);
+      await stopWatching(cwd);
     });
   }
 
@@ -59,18 +108,8 @@ export default function codegraphExtension(pi: ExtensionApi): void {
   pi.registerTool?.({
     name: 'codegraph_explore',
     label: 'CodeGraph Explore',
-    description:
-      'Explore code structure, symbol definitions, callers, dependencies, and blast radius in one call.',
-    parameters: {
-      type: 'object',
-      properties: {
-        query: {
-          type: 'string',
-          description: 'Symbol name, function name, class, or search query to explore.',
-        },
-      },
-      required: ['query'],
-    },
+    description: 'Explore code structure, symbol definitions, callers, dependencies, and blast radius in one call.',
+    parameters: queryParameters(pi),
     execute: async (
       _toolCallId: string,
       params: { args: string[] },
@@ -107,10 +146,7 @@ export default function codegraphExtension(pi: ExtensionApi): void {
           };
         }
 
-        const lines: string[] = [
-          `# CodeGraph Explore: "${query}"`,
-          `Found ${result.symbols.length} symbol(s):`,
-        ];
+        const lines: string[] = [`# CodeGraph Explore: "${query}"`, `Found ${result.symbols.length} symbol(s):`];
 
         for (const s of result.symbols) {
           lines.push(
@@ -154,10 +190,7 @@ export default function codegraphExtension(pi: ExtensionApi): void {
     name: 'codegraph_sync',
     label: 'CodeGraph Sync',
     description: 'Incrementally sync modified files into the CodeGraph index.',
-    parameters: {
-      type: 'object',
-      properties: {},
-    },
+    parameters: emptyParameters(pi),
     execute: async (
       _toolCallId: string,
       _params: { args: string[] },
@@ -198,14 +231,21 @@ export default function codegraphExtension(pi: ExtensionApi): void {
 
       if (!trimmed || trimmed === 'status') {
         const status = await getCodeGraphStatus(projectRoot);
-        if (status.initialized) {
+        if (status.error) {
+          ctx?.ui?.notify?.(`CodeGraph error: ${status.error}`, 'warning');
+        } else if (status.isIndexing && !status.initialized) {
+          ctx?.ui?.notify?.('CodeGraph: the first index is still being built.', 'info');
+        } else if (status.initialized) {
           const syncInfo = status.isWatching ? 'Auto-sync active' : 'Sync idle';
           ctx?.ui?.notify?.(
             `CodeGraph: ${status.nodeCount} symbols, ${status.edgeCount} edges, ${status.fileCount} files (${syncInfo}).`,
             'info',
           );
         } else {
-          ctx?.ui?.notify?.('CodeGraph: Not initialized in this repository. Run `/codegraph sync` to index.', 'warning');
+          ctx?.ui?.notify?.(
+            'CodeGraph: Not initialized in this repository. Run `/codegraph sync` to index.',
+            'warning',
+          );
         }
         return;
       }

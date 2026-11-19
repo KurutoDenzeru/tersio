@@ -1,14 +1,15 @@
 // CLI command for CodeGraph.
 import {
-    ensureInitializedAndWatching,
-    exploreSymbol,
-    getCodeGraphStatus,
-    indexCodeGraph,
-    stopWatching,
-    syncCodeGraph,
+  ensureInitializedAndWatching,
+  exploreSymbol,
+  getCodeGraphStatus,
+  indexCodeGraph,
+  stopWatching,
+  syncCodeGraph,
 } from '../extensions/codegraph/client.ts';
-import {readCodegraphSync} from '../extensions/shared/plugin-settings.ts';
-import {installGitHooks} from '../extensions/codegraph/git-hooks.ts';
+import { readCodegraphSync } from '../extensions/shared/plugin-settings.ts';
+import { installGitHooks } from '../extensions/codegraph/git-hooks.ts';
+import { withResolvers } from '../extensions/shared/utils.ts';
 
 export async function runCodegraph(args: string[]): Promise<void> {
   const sub = args[0] || 'status';
@@ -30,6 +31,8 @@ export async function runCodegraph(args: string[]): Promise<void> {
       if (status.isIndexing) {
         console.log(`  State: indexing in progress`);
       }
+    } else if (status.isIndexing) {
+      console.log(`CodeGraph is building its first index for ${projectRoot}. Check back shortly.`);
     } else {
       console.log(
         `CodeGraph is not initialized in ${projectRoot}. Run 'tersio codegraph init' or start an agent session.`,
@@ -70,8 +73,8 @@ export async function runCodegraph(args: string[]): Promise<void> {
     } else {
       console.log(`CodeGraph watcher initialized (sync mode: ${syncMode}). Press Ctrl+C to exit.`);
     }
-    const keepAlive = setInterval(() => { }, 2 ** 30);
-    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    const keepAlive = setInterval(() => {}, 2 ** 30);
+    const { promise, resolve, reject } = withResolvers<void>();
     const onExit = async (signal: 'SIGINT' | 'SIGTERM') => {
       process.off('SIGINT', onSigint);
       process.off('SIGTERM', onSigterm);
@@ -89,8 +92,12 @@ export async function runCodegraph(args: string[]): Promise<void> {
         resolve();
       }
     };
-    const onSigint = () => { void onExit('SIGINT'); };
-    const onSigterm = () => { void onExit('SIGTERM'); };
+    const onSigint = () => {
+      void onExit('SIGINT');
+    };
+    const onSigterm = () => {
+      void onExit('SIGTERM');
+    };
     process.once('SIGINT', onSigint);
     process.once('SIGTERM', onSigterm);
     await promise;

@@ -1,8 +1,8 @@
-import {execFile as execFileCallback} from 'node:child_process';
-import {promises as fs} from 'node:fs';
+import { execFile as execFileCallback } from 'node:child_process';
+import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import {promisify} from 'node:util';
-import {isRecord, shimCommand, tersioHome} from '../shared/utils.ts';
+import { promisify } from 'node:util';
+import { isRecord, shimCommand, tersioHome } from '../shared/utils.ts';
 
 const execFile = promisify(execFileCallback);
 const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
@@ -56,9 +56,12 @@ async function verifyBundle(root: string, expected?: string, signal?: AbortSigna
   const entry = path.join(root, 'lib', 'dist', 'index.js');
   const smokeRoot = await fs.mkdtemp(path.join(tersioHome(), 'codegraph', 'bundles', '.check-'));
   try {
-    await execFile(node, [
-      '--liftoff-only', '-e',
-      `const fs = require('node:fs');
+    await execFile(
+      node,
+      [
+        '--liftoff-only',
+        '-e',
+        `const fs = require('node:fs');
 const path = require('node:path');
 (async () => {
   const Graph = require(process.argv[1]).CodeGraph;
@@ -76,8 +79,11 @@ const path = require('node:path');
     graph.close();
   }
 })().catch((error) => { console.error(error.message); process.exitCode = 1; });`,
-      entry, smokeRoot,
-    ], { timeout: SMOKE_TIMEOUT_MS, windowsHide: true, signal });
+        entry,
+        smokeRoot,
+      ],
+      { timeout: SMOKE_TIMEOUT_MS, windowsHide: true, signal },
+    );
   } finally {
     await fs.rm(smokeRoot, { recursive: true, force: true });
   }
@@ -104,8 +110,17 @@ export async function installCodeGraphBundle(version?: string, signal?: AbortSig
     const packageName = `@colbymchenry/codegraph-${target}`;
     const packageRoot = path.join(stage, 'node_modules', '@colbymchenry', `codegraph-${target}`);
     const npmArgs = [
-      'install', '--prefix', stage, '--no-save', '--no-package-lock', '--ignore-scripts', '--no-audit', '--no-fund',
-      '--no-progress', '--registry=https://registry.npmjs.org', `${packageName}@${version ?? 'latest'}`,
+      'install',
+      '--prefix',
+      stage,
+      '--no-save',
+      '--no-package-lock',
+      '--ignore-scripts',
+      '--no-audit',
+      '--no-fund',
+      '--no-progress',
+      '--registry=https://registry.npmjs.org',
+      `${packageName}@${version ?? 'latest'}`,
     ];
     const npm = shimCommand(process.platform === 'win32' ? 'npm.cmd' : 'npm', npmArgs);
     await execFile(npm.cmd, npm.args, { timeout: INSTALL_TIMEOUT_MS, windowsHide: true, signal });

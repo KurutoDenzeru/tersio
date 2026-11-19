@@ -3,10 +3,10 @@
 import fs from 'node:fs';
 import type http from 'node:http';
 import path from 'node:path';
-import {URL} from 'node:url';
-import {getCodeGraphStatus, indexCodeGraph, syncCodeGraph} from '../extensions/codegraph/client.ts';
-import {findRepoRoot} from '../extensions/codegraph/shared.ts';
-import {readCodegraphDefault, readCodegraphSync} from '../extensions/shared/plugin-settings.ts';
+import { URL } from 'node:url';
+import { getCodeGraphStatus, indexCodeGraph, syncCodeGraph } from '../extensions/codegraph/client.ts';
+import { findRepoRoot } from '../extensions/codegraph/shared.ts';
+import { readCodegraphDefault, readCodegraphSync } from '../extensions/shared/plugin-settings.ts';
 
 export interface CodeGraphRouteCtx {
   json: (res: Pick<http.ServerResponse, 'writeHead' | 'end'>, code: number, body: unknown) => void;
@@ -40,7 +40,8 @@ export function resolveRepoRoot(requested: string | null | undefined, start = pr
   const raw = requested?.trim();
   if (raw) {
     const dir = path.resolve(raw);
-    if (!isRepoRoot(dir) || fs.realpathSync(dir) !== root) throw new Error('Requested repository is not the dashboard project.');
+    if (!isRepoRoot(dir) || fs.realpathSync(dir) !== root)
+      throw new Error('Requested repository is not the dashboard project.');
   }
   return root;
 }
@@ -96,7 +97,13 @@ export async function handleCodeGraphRoutes(
     if (root === null) return true;
     try {
       const status = await getCodeGraphStatus(root);
-      ctx.json(res, 200, { ok: true, root, status, syncMode: readCodegraphSync(), enabled: readCodegraphDefault() === 'on' });
+      ctx.json(res, 200, {
+        ok: true,
+        root,
+        status,
+        syncMode: readCodegraphSync(),
+        enabled: readCodegraphDefault() === 'on',
+      });
     } catch (err) {
       ctx.json(res, 500, { ok: false, error: (err as Error).message });
     }

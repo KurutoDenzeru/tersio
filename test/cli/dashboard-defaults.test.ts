@@ -1,9 +1,9 @@
-import {type ChildProcess, spawn} from 'node:child_process';
-import {mkdtempSync, readFileSync, rmSync} from 'node:fs';
+import { type ChildProcess, spawn } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
-import {expect, test} from 'vitest';
+import { fileURLToPath } from 'node:url';
+import { expect, test } from 'vitest';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const installer = path.join(root, 'dist', 'tersio.js');

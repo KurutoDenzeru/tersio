@@ -1,5 +1,5 @@
-import {readPluginSettings} from './plugin-settings.ts';
-import type {ComboLevel, ComboState, ExtensionCtx, SessionEntry} from './types.ts';
+import { readPluginSettings } from './plugin-settings.ts';
+import type { ComboLevel, ComboState, ExtensionCtx, SessionEntry } from './types.ts';
 
 const BRIDGE_KEY = Symbol.for('tersio/combo-session-state');
 

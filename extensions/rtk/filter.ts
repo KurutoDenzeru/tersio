@@ -1,14 +1,14 @@
 // pi's built-in grep and glob never reach the bash hook; `read` is absent because rtk has no filter for it.
-import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
-import {join} from 'node:path';
-import {resolveRtkBinary} from '../shared/utils.ts';
-import {readRtkDefault} from '../shared/plugin-settings.ts';
-import {getSharedComboState, lastCustomValue, sessionEntries} from '../shared/session-state.ts';
-import {appendUsage} from '../shared/usage-ledger.ts';
-import {hasToolLifecycle, isPigHost, isPiHost} from '../shared/host.ts';
-import {rewriteThroughRtk} from '../shared/rtk-rewrite.ts';
-import type {ExtensionApi, ExtensionCtx, SessionEntry, ToolResultEvent} from '../shared/types.ts';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { resolveRtkBinary } from '../shared/utils.ts';
+import { readRtkDefault } from '../shared/plugin-settings.ts';
+import { getSharedComboState, lastCustomValue, sessionEntries } from '../shared/session-state.ts';
+import { appendUsage } from '../shared/usage-ledger.ts';
+import { hasToolLifecycle, isPigHost, isPiHost } from '../shared/host.ts';
+import { rewriteThroughRtk } from '../shared/rtk-rewrite.ts';
+import type { ExtensionApi, ExtensionCtx, SessionEntry, ToolResultEvent } from '../shared/types.ts';
 
 /** Tool name to `rtk pipe --filter` name. Exported so the OpenCode host reuses one map. */
 export const FILTER_BY_TOOL = new Map([
@@ -131,13 +131,13 @@ export default function rtkFilterExtension(pi: ExtensionApi): void {
         signal: ctx?.signal,
         ...(exec
           ? {
-            exec: (file, args, opts) => {
-              const deadline = AbortSignal.timeout(opts.timeout);
-              return exec(file, args, {
-                signal: opts.signal ? AbortSignal.any([opts.signal, deadline]) : deadline,
-              });
-            },
-          }
+              exec: (file, args, opts) => {
+                const deadline = AbortSignal.timeout(opts.timeout);
+                return exec(file, args, {
+                  signal: opts.signal ? AbortSignal.any([opts.signal, deadline]) : deadline,
+                });
+              },
+            }
           : {}),
       });
       if (!rewritten || rewritten === command) return;

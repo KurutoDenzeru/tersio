@@ -1,29 +1,29 @@
 // OpenCode plugin entry: maps its plugin API onto the shared ExtensionApi the mode extensions consume.
-import {execFile} from 'node:child_process';
-import {existsSync, readdirSync, readFileSync} from 'node:fs';
-import {basename, dirname, join} from 'node:path';
-import {fileURLToPath} from 'node:url';
-import type {Plugin} from '@opencode/plugin';
+import { execFile } from 'node:child_process';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { Plugin } from '@opencode/plugin';
 import cavemanSessionExtension from './caveman/index.ts';
 import pstackSessionExtension from './pstack/index.ts';
 import headroomSessionExtension from './headroom/index.ts';
 import rtkSessionExtension from './rtk/session.ts';
 import rtkFilterExtension, {
-    FILTER_BY_TOOL,
-    filterableText,
-    filterThroughRtk,
-    MIN_FILTER_BYTES,
-    rtkActive,
+  FILTER_BY_TOOL,
+  filterableText,
+  filterThroughRtk,
+  MIN_FILTER_BYTES,
+  rtkActive,
 } from './rtk/filter.ts';
 import comboToggleExtension from './combo/index.ts';
 import tersioCommandsExtension from './commands/index.ts';
 import codegraphSessionExtension from './codegraph/index.ts';
-import {onToolFinished} from './codegraph/client.ts';
-import {getSharedComboState} from './shared/session-state.ts';
-import {formatStatus} from './shared/status.ts';
-import {resolveRtkBinary, shimCommand} from './shared/utils.ts';
-import {appendUsage} from './shared/usage-ledger.ts';
-import type {ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent} from './shared/types.ts';
+import { onToolFinished } from './codegraph/client.ts';
+import { getSharedComboState } from './shared/session-state.ts';
+import { formatStatus } from './shared/status.ts';
+import { resolveRtkBinary, shimCommand } from './shared/utils.ts';
+import { appendUsage } from './shared/usage-ledger.ts';
+import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from './shared/types.ts';
 
 // The first hook of an unseen session runs its session_start handlers.
 function sidOf(value: unknown): string | undefined {
@@ -41,7 +41,7 @@ interface ToolConfig {
   parameters: unknown;
   execute: (
     toolCallId: string,
-    params: { args: string[];[key: string]: unknown },
+    params: { args: string[]; [key: string]: unknown },
     signal: AbortSignal | undefined,
     onUpdate: ((data: unknown) => void) | undefined,
     ctx: ExtensionCtx | undefined,
@@ -61,7 +61,7 @@ const plugin: Plugin.Plugin = {
       if (own.length) return own;
       // Pre-scoped installs kept one global list; adopt it once and clear it so it cannot shadow saved defaults later.
       const legacy = ((await ctx.storage.get('entries')) as SessionEntry[] | undefined) ?? [];
-      if (legacy.length) void ctx.storage.set('entries', []).catch(() => { });
+      if (legacy.length) void ctx.storage.set('entries', []).catch(() => {});
       return [...legacy];
     };
     const sessionEntriesOf = (sid: string): SessionEntry[] => {
@@ -74,7 +74,7 @@ const plugin: Plugin.Plugin = {
     };
     const persist = (sid: string): void => {
       // SAFETY: the storage API is generic over its payload; the value round-trips unchanged.
-      void ctx.storage.set(`entries:${sid}`, sessionEntriesOf(sid) as unknown as never).catch(() => { });
+      void ctx.storage.set(`entries:${sid}`, sessionEntriesOf(sid) as unknown as never).catch(() => {});
     };
     const stubCtx = (sid?: string): ExtensionCtx => ({
       hasUI: false,
@@ -83,9 +83,9 @@ const plugin: Plugin.Plugin = {
         sid === undefined
           ? { getBranch: () => [], getEntries: () => [] }
           : {
-            getBranch: () => sessionEntriesOf(sid),
-            getEntries: () => sessionEntriesOf(sid),
-          },
+              getBranch: () => sessionEntriesOf(sid),
+              getEntries: () => sessionEntriesOf(sid),
+            },
     });
     // Starts are chained so appends land in the calling session.
     let startQueue = Promise.resolve();
@@ -103,7 +103,7 @@ const plugin: Plugin.Plugin = {
             activeSid = undefined;
           }
         })
-        .catch(() => { });
+        .catch(() => {});
       started.set(sid, run);
       startQueue = run;
     };
@@ -119,7 +119,7 @@ const plugin: Plugin.Plugin = {
 
     const host: ExtensionApi = {
       hostId: 'opencode',
-      setLabel() { },
+      setLabel() {},
       registerCommand(name, config) {
         commands.set(name, config);
       },
@@ -214,7 +214,7 @@ const plugin: Plugin.Plugin = {
           input: tool.parameters as { type: 'object'; properties: Record<string, unknown>; required?: string[] },
           execute: async (input) => {
             const params = input !== null && typeof input === 'object' ? (input as Record<string, unknown>) : {};
-            const args = Array.isArray(params.args) ? params.args as string[] : [];
+            const args = Array.isArray(params.args) ? (params.args as string[]) : [];
             const result = await tool.execute('t', { ...params, args }, undefined, undefined, stubCtx());
             return { content: result.content.map((part) => part.text).join('\n') };
           },

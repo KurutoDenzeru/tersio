@@ -1,8 +1,8 @@
 // Agent-neutral RTK routing: any harness that can see a tool call and replace its arguments can use this.
 // Nothing here names a host; the caller passes its own id for rtk's rule set and its own tool names.
-import {execFile} from 'node:child_process';
-import {promisify} from 'node:util';
-import {resolveRtkBinary} from './utils.ts';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { resolveRtkBinary } from './utils.ts';
 
 const execFileP = promisify(execFile);
 
@@ -91,4 +91,3 @@ export async function rewriteToolArguments(
   if (!rewritten || rewritten === command) return null;
   return { ...(args as Record<string, unknown>), command: rewritten };
 }
-

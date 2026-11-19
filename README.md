@@ -182,7 +182,7 @@ pstack is an adapted fork pinned in each Tersio release. `tersio update --host <
 
 For OMP, pi, PiG, and OpenCode, Tersio installs the official platform-specific CodeGraph bundle during setup. A host-native plugin install downloads it in the background at the first session if it is missing. The download needs npm, network access, and several hundred MB of disk space. Tersio stores its bundle under `~/.tersio/codegraph/bundles`; an existing CodeGraph bundle or `CODEGRAPH_LIB_PATH` is left in place. `tersio update` checks for a newer bundle. With `PI_OFFLINE=1`, Tersio does not download it.
 
-An enabled session initializes its Git repository and keeps it synchronized while the session runs. Existing indexes sync in the background at startup, except in `manual` mode. No cron or manual initialization is needed. The Tools page reports the repository containing the dashboard's working directory and the recently observed watcher state. Dashboard indexing and sync actions accept requests only from the local machine.
+An enabled session builds the CodeGraph index for its Git repository and keeps it synchronized while the session runs. Existing indexes sync in the background at startup, except in `manual` mode. No cron or manual initialization is needed. The Tools page reports the repository containing the dashboard's working directory and the recently observed watcher state. Dashboard indexing and sync actions accept requests only from the local machine.
 
 The index follows your edits at the interval you choose. The choice is shared by every agent, set in the dashboard's Quick start or with `tersio modes codegraph-sync <mode>`:
 

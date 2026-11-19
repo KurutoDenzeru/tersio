@@ -1,128 +1,130 @@
 import {
-    CODEGRAPH_SYNC_MODES,
-    type CodegraphSyncMode,
-    tersioSettingsFile
+  CODEGRAPH_SYNC_MODES,
+  type CodegraphSyncMode,
+  supportsCodegraph,
+  tersioSettingsFile,
 } from '../extensions/shared/plugin-settings.ts';
 // Dashboard server + usage APIs. Binds 127.0.0.1; --export writes a file. No Promise.withResolvers (Node 20.12).
-import {type ChildProcess, execFileSync, spawn} from 'node:child_process';
-import {readActivity, recordActivity} from './activity.ts';
-import {cacheGet, cachePut} from '../extensions/shared/cache-store.ts';
-import {existsSync, promises as fs, readFileSync, rmSync, statSync, watch} from 'node:fs';
+import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
+import { readActivity, recordActivity } from './activity.ts';
+import { cacheGet, cachePut } from '../extensions/shared/cache-store.ts';
+import { existsSync, promises as fs, readFileSync, rmSync, statSync, watch } from 'node:fs';
 import http from 'node:http';
-import type {Socket} from 'node:net';
+import type { Socket } from 'node:net';
 import net from 'node:net';
 import os from 'node:os';
-import {gzipSync} from 'node:zlib';
-import {readHeadroomRoute} from '../extensions/shared/headroom-routing.ts';
+import { gzipSync } from 'node:zlib';
+import { readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
-import type {CurrencyCode} from './currency.ts';
-import {isCurrencyCode} from './currency.ts';
-import {qrTerminal} from './qr.ts';
-import {ensureHeadroomRuntime} from '../extensions/shared/headroom-runtime.ts';
-import {handleBenchRoutes} from './dashboard-bench.ts';
-import {handleCodeGraphRoutes} from './dashboard-codegraph.ts';
-import {handleHeadroomRoutes} from './dashboard-headroom.ts';
-import {handleVendorRoutes} from './dashboard-vendor.ts';
-import {handleHostRoutes} from './dashboard-hosts.ts';
+import { fileURLToPath } from 'node:url';
+import type { CurrencyCode } from './currency.ts';
+import { isCurrencyCode } from './currency.ts';
+import { qrTerminal } from './qr.ts';
+import { ensureHeadroomRuntime } from '../extensions/shared/headroom-runtime.ts';
+import { handleBenchRoutes } from './dashboard-bench.ts';
+import { handleCodeGraphRoutes } from './dashboard-codegraph.ts';
+import { handleHeadroomRoutes } from './dashboard-headroom.ts';
+import { handleVendorRoutes } from './dashboard-vendor.ts';
+import { handleHostRoutes } from './dashboard-hosts.ts';
 import {
-    ACCENT_DEFAULTS,
-    CAVEMAN_DEFAULTS,
-    CODEGRAPH_DEFAULTS,
-    COMBO_PRESET_MODES,
-    HEADROOM_DEFAULTS,
-    OMP_AGENT_DIR,
-    OMP_PLUGINS_DIR,
-    PACKAGE_NAME,
-    PACKAGE_VERSION,
-    PONYTAIL_DEFAULTS,
-    PSTACK_DEFAULTS
+  ACCENT_DEFAULTS,
+  CAVEMAN_DEFAULTS,
+  CODEGRAPH_DEFAULTS,
+  COMBO_PRESET_MODES,
+  HEADROOM_DEFAULTS,
+  OMP_AGENT_DIR,
+  OMP_PLUGINS_DIR,
+  PACKAGE_NAME,
+  PACKAGE_VERSION,
+  PONYTAIL_DEFAULTS,
+  PSTACK_DEFAULTS,
 } from './common.ts';
-import type {BackupSchedule, HostDefaultField} from './profile.ts';
+import type { BackupSchedule, HostDefaultField } from './profile.ts';
 import {
-    applyComboPreset,
-    BACKUP_SCHEDULES,
-    clampSidebarWidth,
-    comboLevelOf,
-    formatCliStatus,
-    RETENTION_DAYS,
-    saveHostDefaults,
-    storedProfile,
-    writePluginSettings,
+  applyComboPreset,
+  BACKUP_SCHEDULES,
+  clampSidebarWidth,
+  comboLevelOf,
+  formatCliStatus,
+  RETENTION_DAYS,
+  saveHostDefaults,
+  storedProfile,
+  writePluginSettings,
 } from './profile.ts';
-import {readState} from '../extensions/shared/state.ts';
-import {REMOTE_MARKS} from '../extensions/shared/brand-marks.ts';
-import type {UpdatePrefs} from './dashboard-update.ts';
-import {setUpdatePrefs, startApply, startCheck, startUpdateWatch, updateView} from './dashboard-update.ts';
-import {normalizeComboLevel} from '../extensions/shared/session-state.ts';
-import {detectHosts, dshHome, dshPresent, dshVersionBinary, hostAgentInfo} from './hosts.ts';
-import {checkHostTrees} from './host-tree.ts';
+import { readState } from '../extensions/shared/state.ts';
+import { REMOTE_MARKS } from '../extensions/shared/brand-marks.ts';
+import type { UpdatePrefs } from './dashboard-update.ts';
+import { setUpdatePrefs, startApply, startCheck, startUpdateWatch, updateView } from './dashboard-update.ts';
+import { normalizeComboLevel } from '../extensions/shared/session-state.ts';
+import { detectHosts, dshHome, dshPresent, dshVersionBinary, hostAgentInfo } from './hosts.ts';
+import { checkHostTrees } from './host-tree.ts';
 import {
-    findPackageRoot,
-    homeDir,
-    openCommand,
-    resolveCodexBinary,
-    resolveHeadroomBinary,
-    resolveHostBinary,
-    resolveRtkBinary,
-    ruleBodyProblem,
-    tersioHome,
+  findPackageRoot,
+  homeDir,
+  openCommand,
+  resolveCodexBinary,
+  resolveHeadroomBinary,
+  resolveHostBinary,
+  resolveRtkBinary,
+  ruleBodyProblem,
+  tersioHome,
 } from '../extensions/shared/utils.ts';
-import {codexHome} from '../extensions/shared/codex-state.ts';
-import {claudeHome} from '../extensions/shared/claude-state.ts';
-import {tersioMcpConfigured, tersioMcpSupported} from '../extensions/shared/mcp-config.ts';
+import { codexHome } from '../extensions/shared/codex-state.ts';
+import { claudeHome } from '../extensions/shared/claude-state.ts';
+import { tersioMcpConfigured, tersioMcpSupported } from '../extensions/shared/mcp-config.ts';
 import {
-    BACKUP_DAILY_DAYS,
+  BACKUP_DAILY_DAYS,
   BACKUP_KEEP,
   BACKUP_MONTHLY_MONTHS,
   BACKUP_YEARLY_YEARS,
-    backupDir,
-    backupDiskBytes,
-    createDataBackup,
-    dataSources,
-    deleteDataBackup,
-    listDataBackups,
-    restoreDataBackup,
+  backupDir,
+  backupDiskBytes,
+  createDataBackup,
+  dataSources,
+  deleteDataBackup,
+  listDataBackups,
+  restoreDataBackup,
 } from '../extensions/shared/snapshots.ts';
 import {
-    applyTarget,
-    emptyConfig,
-    listSyncVersions,
-    publicFields,
-    readSync,
-    restoreSync,
-    runSync,
-    saveSync,
-    syncTarget,
-    testTarget,
+  applyTarget,
+  emptyConfig,
+  listSyncVersions,
+  publicFields,
+  readSync,
+  restoreSync,
+  runSync,
+  saveSync,
+  syncTarget,
+  testTarget,
 } from './dashboard-sync.ts';
-import {remoteFor} from '../extensions/shared/sync-remote.ts';
+import { remoteFor } from '../extensions/shared/sync-remote.ts';
 import {
-    cachedScorecard,
-    cachedScorecardSync,
-    CAVEMAN_PIN,
-    PSTACK_PIN,
-    refreshScorecard,
-    upstreamHistory,
+  cachedScorecard,
+  cachedScorecardSync,
+  CAVEMAN_PIN,
+  PSTACK_PIN,
+  refreshScorecard,
+  upstreamHistory,
 } from './upstream.ts';
-import {resetCounts, resetStatistics} from './reset.ts';
+import { resetCounts, resetStatistics } from './reset.ts';
 
-import {readBackupSchedule} from '../extensions/shared/usage-store.ts';
+import { readBackupSchedule } from '../extensions/shared/usage-store.ts';
 import {
-    emptyRequestEntry,
-    isAgentView,
-    isRangeKey,
-    readAgentRequestEntry,
-    readHeadroomReport,
-    readSessionTrace,
+  emptyRequestEntry,
+  isAgentView,
+  isRangeKey,
+  readAgentRequestEntry,
+  readHeadroomReport,
+  readSessionTrace,
 } from '../extensions/shared/agent-stats.ts';
-import {agentStats, DEFAULT_AGENT_RANGE} from '../extensions/shared/agent-snapshot.ts';
-import type {AgentView, RangeKey} from '../extensions/shared/agent-types.ts';
+import { agentStats, DEFAULT_AGENT_RANGE } from '../extensions/shared/agent-snapshot.ts';
+import type { AgentView, RangeKey } from '../extensions/shared/agent-types.ts';
 
 /** The listen address: loopback by default; LAN access requires an explicit bind. */
 export function resolveBind(bind?: string | null): string {
   const value = (bind ?? '').trim().toLowerCase();
-  if (value === '' || value === 'local' || value === 'loopback' || value === 'localhost' || value === '127.0.0.1') return '127.0.0.1';
+  if (value === '' || value === 'local' || value === 'loopback' || value === 'localhost' || value === '127.0.0.1')
+    return '127.0.0.1';
   if (value === 'lan' || value === 'all' || value === '*' || value === '0.0.0.0') return '0.0.0.0';
   if (value === '::' || value === '::1') return value;
   return net.isIP(value) ? value : '127.0.0.1';
@@ -783,13 +785,6 @@ function getDoctorReport(): DoctorReport {
   return { rows: computeDoctorRows(), checkedAt: Date.now() };
 }
 
-const CODEGRAPH_HOSTS: Readonly<Record<string, true | undefined>> = {
-  omp: true,
-  pi: true,
-  pig: true,
-  opencode: true,
-};
-
 // One field per call, validated against the same sets the CLI uses. A body with a `host` writes that
 // agent's own section, so one agent's preset never becomes every agent's.
 // Writes serialize: every call re-reads the profile inside the queue, so two overlapping requests (a sidebar drag racing a toggle) can never write whole profiles from stale snapshots.
@@ -805,7 +800,7 @@ function saveDefaults(
         ? (body.host as (typeof HOST_SCOPES)[number])
         : null;
     if (body.host !== undefined && hostScope === null) return { ok: false, error: 'unknown host scope' };
-    if (body.codegraphDefault !== undefined && hostScope && !CODEGRAPH_HOSTS[hostScope]) {
+    if (body.codegraphDefault !== undefined && hostScope && !supportsCodegraph(hostScope)) {
       return { ok: false, error: `CodeGraph is not supported for ${hostScope}` };
     }
     const profile = await storedProfile(hostScope);
@@ -880,7 +875,8 @@ function saveDefaults(
       // The sync interval is one schedule for every agent, so a host-scoped request cannot set it.
       if (hostScope) return { ok: false, error: 'CodeGraph sync applies to every agent; drop the host' };
       const v = String(body.codegraphSync);
-      if (!(CODEGRAPH_SYNC_MODES as readonly string[]).includes(v)) return { ok: false, error: 'unknown codegraph sync mode' };
+      if (!(CODEGRAPH_SYNC_MODES as readonly string[]).includes(v))
+        return { ok: false, error: 'unknown codegraph sync mode' };
       profile.codegraphSync = v as CodegraphSyncMode;
       events.push(`CodeGraph sync to ${v}`);
     }
@@ -1545,29 +1541,29 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       const body = file
         ? readSessionTrace(file)
         : {
-          sessionFile: '',
-          project: '',
-          title: '',
-          cwd: '',
-          startedAt: 0,
-          endedAt: 0,
-          tracks: [],
-          markers: [],
-          summary: {
-            wallMs: 0,
-            modelMs: 0,
-            toolMs: 0,
-            idleMs: 0,
-            turns: 0,
-            requests: 0,
-            toolCalls: 0,
-            agents: 0,
-            totalTokens: 0,
-            costUsd: 0,
-          },
-          toolStats: [],
-          truncated: false,
-        };
+            sessionFile: '',
+            project: '',
+            title: '',
+            cwd: '',
+            startedAt: 0,
+            endedAt: 0,
+            tracks: [],
+            markers: [],
+            summary: {
+              wallMs: 0,
+              modelMs: 0,
+              toolMs: 0,
+              idleMs: 0,
+              turns: 0,
+              requests: 0,
+              toolCalls: 0,
+              agents: 0,
+              totalTokens: 0,
+              costUsd: 0,
+            },
+            toolStats: [],
+            truncated: false,
+          };
       json(res, 200, body);
       return;
     }

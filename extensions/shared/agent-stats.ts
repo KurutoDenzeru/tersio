@@ -1,47 +1,47 @@
 // Read-only aggregate over the usage store; missing SQLite, table, or metric reads as zeros.
 import fs from 'node:fs';
 import path from 'node:path';
-import {sqliteRead} from './sqlite.ts';
-import {COL, folderExpr, SOURCE} from './agent-sql.ts';
+import { sqliteRead } from './sqlite.ts';
+import { COL, folderExpr, SOURCE } from './agent-sql.ts';
 import type {
-    AgentBucket,
-    AgentCostMix,
-    AgentErrorGroup,
-    AgentErrorModelRow,
-    AgentHeadroom,
-    AgentModelPerformancePoint,
-    AgentOverall,
-    AgentProviderHour,
-    AgentRequestRow,
-    AgentRequestStats,
-    AgentRow,
-    AgentRtk,
-    AgentSessionTrace,
-    AgentStats,
-    AgentTokenMix,
-    AgentToolRow,
-    AgentTraceMarker,
-    AgentTraceRow,
-    AgentTraceSpan,
-    AgentTraceSummary,
-    AgentTraceToolStat,
-    AgentView,
-    AgentWindowInsight,
-    AgentWindowPoint,
-    AgentWindowSeries,
-    JournalAgent,
-    RangeKey,
+  AgentBucket,
+  AgentCostMix,
+  AgentErrorGroup,
+  AgentErrorModelRow,
+  AgentHeadroom,
+  AgentModelPerformancePoint,
+  AgentOverall,
+  AgentProviderHour,
+  AgentRequestRow,
+  AgentRequestStats,
+  AgentRow,
+  AgentRtk,
+  AgentSessionTrace,
+  AgentStats,
+  AgentTokenMix,
+  AgentToolRow,
+  AgentTraceMarker,
+  AgentTraceRow,
+  AgentTraceSpan,
+  AgentTraceSummary,
+  AgentTraceToolStat,
+  AgentView,
+  AgentWindowInsight,
+  AgentWindowPoint,
+  AgentWindowSeries,
+  JournalAgent,
+  RangeKey,
 } from './agent-types.ts';
-import {homeDir, isRecord} from './utils.ts';
-import {priceFor} from './pricing.ts';
-import {usageDbPath} from './usage-store.ts';
-import {readRtkGainByVerb, rtkGainFailure} from './rtk-gain.ts';
-import {readHeadroomDoctorAsync, readHeadroomSavingsAsync, readHeadroomStats} from './headroom-gain.ts';
-import {headroomProxyPort} from './headroom-proxy.ts';
-import {describeHeadroomRoute, readHeadroomRoute} from './headroom-routing.ts';
-import type {RtkAdoption} from './usage-ledger.ts';
-import {hostOfSessionFile, readRtkAdoption, readSessionText, usdCost} from './usage-ledger.ts';
-import {codexModelIdentity, looksLikeCodexTranscript, parseCodexTranscript} from './codex-transcript.ts';
+import { homeDir, isRecord } from './utils.ts';
+import { priceFor } from './pricing.ts';
+import { usageDbPath } from './usage-store.ts';
+import { readRtkGainByVerb, rtkGainFailure } from './rtk-gain.ts';
+import { readHeadroomDoctorAsync, readHeadroomSavingsAsync, readHeadroomStats } from './headroom-gain.ts';
+import { headroomProxyPort } from './headroom-proxy.ts';
+import { describeHeadroomRoute, readHeadroomRoute } from './headroom-routing.ts';
+import type { RtkAdoption } from './usage-ledger.ts';
+import { hostOfSessionFile, readRtkAdoption, readSessionText, usdCost } from './usage-ledger.ts';
+import { codexModelIdentity, looksLikeCodexTranscript, parseCodexTranscript } from './codex-transcript.ts';
 
 export const RANGES: readonly RangeKey[] = ['1h', '24h', '7d', '30d', '90d', 'all'];
 
@@ -590,9 +590,12 @@ function toRequestRows(rows: string[][]): AgentRequestRow[] {
     const costUsd = num(r[10]);
     const cacheRead = num(r[7]);
     const rate = priceFor(r[2] ?? '');
-    const savedCost = !rate.known || num(r[11]) > 0
-      ? null
-      : costUsd > 0 ? (cacheRead * Math.max(0, rate.price.input - rate.price.cacheRead)) / 1_000_000 : 0;
+    const savedCost =
+      !rate.known || num(r[11]) > 0
+        ? null
+        : costUsd > 0
+          ? (cacheRead * Math.max(0, rate.price.input - rate.price.cacheRead)) / 1_000_000
+          : 0;
     return {
       ts: num(r[0]),
       provider: r[1] ?? '',
@@ -1107,7 +1110,9 @@ function downsampleWindow(points: AgentWindowPoint[]): AgentWindowPoint[] {
 
 /** Peak summed quota across accounts, forward-filling last known fractions (1.7 = 1.7 windows held). */
 function peakConcurrent(samples: WindowSample[]): number {
-  const events = samples.filter((sample) => !sample.baseline && sample.usedFraction !== null).toSorted((a, b) => a.ts - b.ts);
+  const events = samples
+    .filter((sample) => !sample.baseline && sample.usedFraction !== null)
+    .toSorted((a, b) => a.ts - b.ts);
   const current = new Map<string, number>();
   let sum = 0;
   let peak = 0;
@@ -1132,8 +1137,9 @@ function readWindowSamples(cutoff: number): WindowSample[] {
   if (!fs.existsSync(db) || tableColumns(db, 'usage_history').size === 0) return [];
   const fields = `${txt('provider')}, ${txt('account_key')}, ${txt('email')}, ${txt('account_id')},
     ${txt('limit_id')}, ${txt('label')}, ${txt('window_label')}, used_fraction, status`;
-  const query = cutoff > 0
-    ? `WITH active AS (
+  const query =
+    cutoff > 0
+      ? `WITH active AS (
         SELECT DISTINCT provider, account_key, limit_id
         FROM usage_history ${rangeWhere(cutoff, 'recorded_at')}
       ), samples AS (
@@ -1155,7 +1161,7 @@ function readWindowSamples(cutoff: number): WindowSample[] {
         )
       )
       SELECT ${fields}, baseline, recorded_at, id FROM samples ORDER BY recorded_at, id`
-    : `SELECT ${fields}, 0 AS baseline, recorded_at, id FROM usage_history ORDER BY recorded_at, id`;
+      : `SELECT ${fields}, 0 AS baseline, recorded_at, id FROM usage_history ORDER BY recorded_at, id`;
   const out = readBlocks(db, [['windows', query]]);
   return (out.get('windows') ?? []).map((r) => {
     const usedFraction = numOrNull(r[7]);
@@ -1390,8 +1396,8 @@ function looksLikeClaudeTranscript(text: string): boolean {
         parsed.type === 'api-request'
           ? typeof parsed.id === 'string'
           : (typeof parsed.sessionId === 'string' &&
-            (parsed.type === 'assistant' || parsed.type === 'user' || parsed.type === 'custom-title')) ||
-          (parsed.type === 'assistant' && isRecord(parsed.message) && parsed.message.role === 'assistant')
+              (parsed.type === 'assistant' || parsed.type === 'user' || parsed.type === 'custom-title')) ||
+            (parsed.type === 'assistant' && isRecord(parsed.message) && parsed.message.role === 'assistant')
       )
         return true;
     } catch {
@@ -2101,23 +2107,23 @@ function codexRequestEntry(
   };
   const output = message
     ? {
-      ...message.message,
-      role: 'assistant',
-      api: 'responses',
-      model: request.model,
-      provider: request.provider,
-      usage,
-      stopReason: request.status,
-    }
+        ...message.message,
+        role: 'assistant',
+        api: 'responses',
+        model: request.model,
+        provider: request.provider,
+        usage,
+        stopReason: request.status,
+      }
     : {
-      role: 'assistant',
-      api: 'responses',
-      model: request.model,
-      provider: request.provider,
-      usage,
-      stopReason: request.status,
-      content: [],
-    };
+        role: 'assistant',
+        api: 'responses',
+        model: request.model,
+        provider: request.provider,
+        usage,
+        stopReason: request.status,
+        content: [],
+      };
   return {
     entry: token?.row ?? { id: request.id, model: request.model, provider: request.provider, usage },
     output,
@@ -2138,12 +2144,12 @@ export function readAgentRequestEntry(
   const text = packed
     ? readSessionText(sessionFile)
     : (() => {
-      try {
-        return fs.readFileSync(sessionFile, 'utf8');
-      } catch {
-        return null;
-      }
-    })();
+        try {
+          return fs.readFileSync(sessionFile, 'utf8');
+        } catch {
+          return null;
+        }
+      })();
   if (text === null) return empty;
   const codex = codexRequestEntry(text, entryId);
   if (codex) return codex;

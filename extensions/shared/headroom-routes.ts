@@ -1,43 +1,43 @@
 // The endpoints Tersio writes itself, for every agent it can route. Only the active provider's
 // endpoint changes, so a later model edit stays intact and the off switch puts the old URL back.
 
-import {existsSync, mkdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
-import {execFile} from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFile } from 'node:child_process';
 import path from 'node:path';
-import {promisify} from 'node:util';
-import type {HeadroomUpstreams, UpstreamDialect} from './headroom-proxy.ts';
+import { promisify } from 'node:util';
+import type { HeadroomUpstreams, UpstreamDialect } from './headroom-proxy.ts';
 import {
-    headroomProxyPort,
-    headroomProxyUpstream,
-    headroomProxyUrl,
-    liveUpstream,
-    opencodeConfigFiles,
-    readOmpGateway,
-    restoreOmpGateway,
-    routeOmpDefaultModel,
-    routeOmpGateway,
-    upstreamMismatches
+  headroomProxyPort,
+  headroomProxyUpstream,
+  headroomProxyUrl,
+  liveUpstream,
+  opencodeConfigFiles,
+  readOmpGateway,
+  restoreOmpGateway,
+  routeOmpDefaultModel,
+  routeOmpGateway,
+  upstreamMismatches,
 } from './headroom-proxy.ts';
-import {headroomRuntimeUp} from './headroom-runtime.ts';
-import {ensureAgentProviderRoute} from './headroom-agent.ts';
-import {codexConfigFile} from './codex-state.ts';
-import type {HeadroomRoute} from './headroom-routing.ts';
+import { headroomRuntimeUp } from './headroom-runtime.ts';
+import { ensureAgentProviderRoute } from './headroom-agent.ts';
+import { codexConfigFile } from './codex-state.ts';
+import type { HeadroomRoute } from './headroom-routing.ts';
 import {
-    describeHeadroomRoute,
-    dshDefaultRoute,
-    dshProfileFiles,
-    dshProviders,
-    jsonBaseUrl,
-    jsonModelEntry,
-    readHeadroomRoute,
-    sameProxyEndpoint,
-    stripJsonComments,
+  describeHeadroomRoute,
+  dshDefaultRoute,
+  dshProfileFiles,
+  dshProviders,
+  jsonBaseUrl,
+  jsonModelEntry,
+  readHeadroomRoute,
+  sameProxyEndpoint,
+  stripJsonComments,
 } from './headroom-routing.ts';
-import {splicePath} from './jsonc-edit.ts';
-import {HOST_CAPS, hostCap} from './host-caps.ts';
-import type {HeadroomRouteRecord} from './state.ts';
-import {patchState, readState} from './state.ts';
-import {homeDir, piAgentDir, pigAgentDir, resolveHeadroomBinary, tersioHome} from './utils.ts';
+import { splicePath } from './jsonc-edit.ts';
+import { HOST_CAPS, hostCap } from './host-caps.ts';
+import type { HeadroomRouteRecord } from './state.ts';
+import { patchState, readState } from './state.ts';
+import { homeDir, piAgentDir, pigAgentDir, resolveHeadroomBinary, tersioHome } from './utils.ts';
 
 export type NativeRouteHost = 'pi' | 'pig' | 'dsh' | 'opencode';
 export const NATIVE_ROUTE_HOSTS: ReadonlyArray<NativeRouteHost> = ['pi', 'pig', 'dsh', 'opencode'];
@@ -261,14 +261,14 @@ export async function routeCodexHeadroom(proxyUrl: string = headroomProxyUrl()):
     writeCodexBackup(
       held
         ? {
-          ...inferred,
-          ...held,
-          provider: routableCodexProvider(held.provider) ?? inferred.provider,
-          providerBaseUrl: held.providerBaseUrl ?? inferred.providerBaseUrl,
-          providerBaseUrlPresent: held.providerBaseUrlPresent === true || inferred.providerBaseUrlPresent === true,
-          modelProviderPresent: held.modelProviderPresent || inferred.modelProviderPresent,
-          openaiBaseUrlPresent: held.openaiBaseUrlPresent || inferred.openaiBaseUrlPresent,
-        }
+            ...inferred,
+            ...held,
+            provider: routableCodexProvider(held.provider) ?? inferred.provider,
+            providerBaseUrl: held.providerBaseUrl ?? inferred.providerBaseUrl,
+            providerBaseUrlPresent: held.providerBaseUrlPresent === true || inferred.providerBaseUrlPresent === true,
+            modelProviderPresent: held.modelProviderPresent || inferred.modelProviderPresent,
+            openaiBaseUrlPresent: held.openaiBaseUrlPresent || inferred.openaiBaseUrlPresent,
+          }
         : inferred,
     );
   }
@@ -554,14 +554,14 @@ function opencodeEndpoint(data: Record<string, unknown>, provider: string): { ke
     map === 'providers'
       ? [['settings.baseURL', settings.baseURL]]
       : [
-        ['options.baseURL', options.baseURL],
-        ['options.baseUrl', options.baseUrl],
-        ['options.base_url', options.base_url],
-        ['baseURL', record.baseURL],
-        ['baseUrl', record.baseUrl],
-        ['base_url', record.base_url],
-        ['api', record.api],
-      ];
+          ['options.baseURL', options.baseURL],
+          ['options.baseUrl', options.baseUrl],
+          ['options.base_url', options.base_url],
+          ['baseURL', record.baseURL],
+          ['baseUrl', record.baseUrl],
+          ['base_url', record.base_url],
+          ['api', record.api],
+        ];
   for (const [key, value] of candidates) {
     if (typeof value === 'string' && value.trim() !== '') return { key: `${map}.${provider}.${key}`, original: value };
   }
@@ -765,7 +765,9 @@ export function headroomRoutedHosts(except?: string): string[] {
 export function headroomRouteUpstreams(host: string): HeadroomUpstreams {
   if (hostCap(host)?.headroomGateway) return {};
   const route = readHeadroomRoute(host);
-  return route.baseUrl && !route.routed ? { openai: route.baseUrl } : {};
+  if (!route.baseUrl || route.routed) return {};
+  // Claude speaks the Anthropic dialect; every other direct route here is OpenAI-compatible.
+  return host === 'claude' ? { anthropic: route.baseUrl } : { openai: route.baseUrl };
 }
 
 function forwardsOf(live: HeadroomUpstreams, dialects: UpstreamDialect[]): string {
@@ -910,7 +912,7 @@ export function removeNativeRoute(host: NativeRouteHost): NativeRouteResult {
   return failed.length === 0
     ? { ok: true, detail: `${host}: endpoint restored` }
     : {
-      ok: false,
-      detail: `${host}: ${failed.length} endpoint${failed.length === 1 ? '' : 's'} could not be restored`,
-    };
+        ok: false,
+        detail: `${host}: ${failed.length} endpoint${failed.length === 1 ? '' : 's'} could not be restored`,
+      };
 }

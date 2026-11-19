@@ -1,27 +1,27 @@
-import {afterAll, afterEach, expect, test} from 'vitest';
-import {spawnSync} from 'node:child_process';
-import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import { afterAll, afterEach, expect, test } from 'vitest';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import { fileURLToPath } from 'node:url';
 import cavemanSessionExtension from '../../extensions/caveman/index.ts';
-import comboToggleExtension, {ponytailFallback} from '../../extensions/combo/index.ts';
+import comboToggleExtension, { ponytailFallback } from '../../extensions/combo/index.ts';
 import pstackSessionExtension from '../../extensions/pstack/index.ts';
 import ponytailExtension from '../../extensions/ponytail/pi-extension/index.ts';
 import {
-    deriveLevel,
-    getSharedComboState,
-    isComboPresetActive,
-    normalizeComboLevel,
-    OMP_SUBAGENT_MARKER,
-    resetSharedComboState,
-    setSharedComboLevel,
-    setSharedComboMode,
+  deriveLevel,
+  getSharedComboState,
+  isComboPresetActive,
+  normalizeComboLevel,
+  OMP_SUBAGENT_MARKER,
+  resetSharedComboState,
+  setSharedComboLevel,
+  setSharedComboMode,
 } from '../../extensions/shared/session-state.ts';
-import type {ExtensionApi, ExtensionCtx, SessionEntry} from '../../extensions/shared/types.ts';
-import {readCavemanDefault} from '../../extensions/shared/plugin-settings.ts';
-import {ruleBodyProblem, ruleDir} from '../../extensions/shared/utils.ts';
-import {cliEnv, withHome} from '../helpers/env.ts';
+import type { ExtensionApi, ExtensionCtx, SessionEntry } from '../../extensions/shared/types.ts';
+import { readCavemanDefault } from '../../extensions/shared/plugin-settings.ts';
+import { ruleBodyProblem, ruleDir } from '../../extensions/shared/utils.ts';
+import { cliEnv, withHome } from '../helpers/env.ts';
 
 // A fresh home per run: mode setters persist defaults, so a shared fixture would leak one test into the next.
 const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), 'tersio-modes-'));
@@ -53,11 +53,11 @@ function piHarness(entries: SessionEntry[] = []): { pi: TestPi; ctx: TestCtx } {
   const notifications: string[] = [];
   const statuses = new Map<string, string>();
   cavemanSessionExtension({
-    setLabel() { },
+    setLabel() {},
     registerCommand(name: string, config: { handler: CommandHandler }) {
       commands.set(name, config.handler);
     },
-    registerTool() { },
+    registerTool() {},
     appendEntry(customType: string, data: Record<string, unknown>) {
       entries.push({ type: 'custom', customType, data });
     },
@@ -94,11 +94,11 @@ function harness(entries: SessionEntry[] = []): { pi: TestPi; ctx: TestCtx } {
   cavemanSessionExtension({
     // The injected zod is how the extensions recognise an OMP host.
     zod: { z: {} },
-    setLabel() { },
+    setLabel() {},
     registerCommand(name: string, config: { handler: CommandHandler }) {
       commands.set(name, config.handler);
     },
-    registerTool() { },
+    registerTool() {},
     appendEntry(customType: string, data: Record<string, unknown>) {
       entries.push({ type: 'custom', customType, data });
     },
@@ -524,10 +524,10 @@ function injectHandler(): ponytailEventHandler {
   comboToggleExtension({
     // The injected zod is how the extensions recognise an OMP host.
     zod: { z: {} },
-    setLabel() { },
-    registerCommand() { },
-    registerTool() { },
-    appendEntry() { },
+    setLabel() {},
+    registerCommand() {},
+    registerTool() {},
+    appendEntry() {},
     on(event: string, h: ponytailEventHandler) {
       if (event === 'before_agent_start') handler = h;
     },
@@ -686,10 +686,12 @@ test('Pi Ponytail follows mode changes written to the current session', async ()
   const entries: SessionEntry[] = [{ type: 'custom', customType: 'ponytail-mode', data: { mode: 'full' } }];
   const handlers = new Map<string, Parameters<Parameters<typeof ponytailExtension>[0]['on']>[1]>();
   ponytailExtension({
-    appendEntry() { },
-    sendUserMessage() { },
-    registerCommand() { },
-    on(event, handler) { handlers.set(event, handler); },
+    appendEntry() {},
+    sendUserMessage() {},
+    registerCommand() {},
+    on(event, handler) {
+      handlers.set(event, handler);
+    },
   });
   const ctx = { sessionManager: { getBranch: () => entries } };
   await handlers.get('session_start')!({}, ctx);
@@ -731,7 +733,7 @@ function instantiate(factory: (pi: ExtensionApi) => void, entries: SessionEntry[
     handlers,
     // Present `zod` marks this as the OMP host, so the adapter treats `systemPrompt` as an array.
     zod: { z: { object: (shape: unknown) => shape } },
-    setLabel() { },
+    setLabel() {},
     registerCommand(name, config) {
       commands.set(name, config.handler);
     },
@@ -880,10 +882,10 @@ test('a host section feeds the combo defaults this host starts from', async () =
     const statuses = new Map<string, string>();
     comboToggleExtension({
       zod: { z: {} },
-      setLabel() { },
-      registerCommand() { },
-      registerTool() { },
-      appendEntry() { },
+      setLabel() {},
+      registerCommand() {},
+      registerTool() {},
+      appendEntry() {},
       on(event: string, handler: (event: unknown, ctx: unknown) => Promise<unknown>) {
         handlers.set(event, handler);
       },
@@ -900,7 +902,7 @@ test('a host section feeds the combo defaults this host starts from', async () =
             if (name === 'tersio') notifications.push(v);
           }
         },
-        notify() { },
+        notify() {},
       },
     };
     await handlers.get('session_start')!({}, ctx);
@@ -934,18 +936,29 @@ test('a host-scoped mode override restores without shared per-mode defaults', as
   });
 });
 
-
 test('deriveLevel maps every preset back to its level, including balanced', () => {
-  expect(deriveLevel({ caveman: 'off', rtk: 'off', ponytail: 'off', pstack: 'off', headroom: 'off', codegraph: 'off' })).toBe('off');
-  expect(deriveLevel({ caveman: 'lite', rtk: 'on', ponytail: 'lite', pstack: 'on', headroom: 'off', codegraph: 'off' })).toBe('lite');
-  expect(deriveLevel({ caveman: 'full', rtk: 'on', ponytail: 'full', pstack: 'on', headroom: 'off', codegraph: 'off' })).toBe('balanced');
-  expect(deriveLevel({ caveman: 'ultra', rtk: 'on', ponytail: 'ultra', pstack: 'on', headroom: 'off', codegraph: 'off' })).toBe('max');
+  expect(
+    deriveLevel({ caveman: 'off', rtk: 'off', ponytail: 'off', pstack: 'off', headroom: 'off', codegraph: 'off' }),
+  ).toBe('off');
+  expect(
+    deriveLevel({ caveman: 'lite', rtk: 'on', ponytail: 'lite', pstack: 'on', headroom: 'off', codegraph: 'off' }),
+  ).toBe('lite');
+  expect(
+    deriveLevel({ caveman: 'full', rtk: 'on', ponytail: 'full', pstack: 'on', headroom: 'off', codegraph: 'off' }),
+  ).toBe('balanced');
+  expect(
+    deriveLevel({ caveman: 'ultra', rtk: 'on', ponytail: 'ultra', pstack: 'on', headroom: 'off', codegraph: 'off' }),
+  ).toBe('max');
 });
 
 // pstack is opt-in, so it neither makes nor breaks a preset.
 test('deriveLevel ignores pstack in both directions', () => {
-  expect(deriveLevel({ caveman: 'ultra', rtk: 'on', ponytail: 'ultra', pstack: 'off', headroom: 'off', codegraph: 'off' })).toBe('max');
-  expect(deriveLevel({ caveman: 'off', rtk: 'off', ponytail: 'off', pstack: 'on', headroom: 'off', codegraph: 'off' })).toBe('off');
+  expect(
+    deriveLevel({ caveman: 'ultra', rtk: 'on', ponytail: 'ultra', pstack: 'off', headroom: 'off', codegraph: 'off' }),
+  ).toBe('max');
+  expect(
+    deriveLevel({ caveman: 'off', rtk: 'off', ponytail: 'off', pstack: 'on', headroom: 'off', codegraph: 'off' }),
+  ).toBe('off');
 });
 
 test('the retired `medium` name still resolves to lite', () => {
@@ -956,13 +969,19 @@ test('the retired `medium` name still resolves to lite', () => {
 });
 
 test('deriveLevel returns custom for mixed modes', () => {
-  expect(deriveLevel({ caveman: 'full', rtk: 'off', ponytail: 'full', pstack: 'off', headroom: 'off', codegraph: 'off' })).toBe('custom');
+  expect(
+    deriveLevel({ caveman: 'full', rtk: 'off', ponytail: 'full', pstack: 'off', headroom: 'off', codegraph: 'off' }),
+  ).toBe('custom');
 });
 
 // A hand-changed mode still leaves every preset behind. pstack is not a preset mode, so it never does.
 test('deriveLevel returns custom when a preset mode is changed by hand', () => {
-  expect(deriveLevel({ caveman: 'full', rtk: 'on', ponytail: 'lite', pstack: 'off', headroom: 'off', codegraph: 'off' })).toBe('custom');
-  expect(deriveLevel({ caveman: 'lite', rtk: 'off', ponytail: 'lite', pstack: 'on', headroom: 'off', codegraph: 'off' })).toBe('custom');
+  expect(
+    deriveLevel({ caveman: 'full', rtk: 'on', ponytail: 'lite', pstack: 'off', headroom: 'off', codegraph: 'off' }),
+  ).toBe('custom');
+  expect(
+    deriveLevel({ caveman: 'lite', rtk: 'off', ponytail: 'lite', pstack: 'on', headroom: 'off', codegraph: 'off' }),
+  ).toBe('custom');
 });
 
 test('isComboPresetActive is true for presets, false for off', () => {

@@ -1,45 +1,45 @@
 // cli/update.ts — update check, per-add-on plan, latest-installer run.
-import {realpathSync} from 'node:fs';
+import { realpathSync } from 'node:fs';
 import path from 'node:path';
-import {spawn} from 'node:child_process';
+import { spawn } from 'node:child_process';
 import {
-    args,
-    BUN_BIN,
-    dryRun,
-    execP,
-    HOME,
-    IS_WINDOWS,
-    NPM_BIN,
-    OMP_PLUGINS_DIR,
-    PACKAGE_BIN,
-    PACKAGE_NAME,
-    PACKAGE_VERSION,
-    parseJsonObject,
-    verbose,
+  args,
+  BUN_BIN,
+  dryRun,
+  execP,
+  HOME,
+  IS_WINDOWS,
+  NPM_BIN,
+  OMP_PLUGINS_DIR,
+  PACKAGE_BIN,
+  PACKAGE_NAME,
+  PACKAGE_VERSION,
+  parseJsonObject,
+  verbose,
 } from './common.ts';
-import {execNetwork, sayTagged} from './interactive.ts';
+import { execNetwork, sayTagged } from './interactive.ts';
 import {
-    CAVEMAN_BODY_PATHS,
-    CAVEMAN_RAW,
-    cavemanRelease,
-    HEADROOM_RELEASE_API,
-    httpsGet,
-    normalizeRtkVersion,
-    readTextIfExists,
-    resolveHeadroomBinary,
-    resolveRtkBinary,
-    RTK_RELEASE_API,
-    sha256Hex,
-    TERSIO_RELEASE_API,
-    tersioDataPath,
+  CAVEMAN_BODY_PATHS,
+  CAVEMAN_RAW,
+  cavemanRelease,
+  HEADROOM_RELEASE_API,
+  httpsGet,
+  normalizeRtkVersion,
+  readTextIfExists,
+  resolveHeadroomBinary,
+  resolveRtkBinary,
+  RTK_RELEASE_API,
+  sha256Hex,
+  TERSIO_RELEASE_API,
+  tersioDataPath,
 } from '../extensions/shared/utils.ts';
-import {patchState, readState, takeLegacy} from '../extensions/shared/state.ts';
-import {refreshPrices} from '../extensions/shared/pricing.ts';
-import {parseHostArg} from './hosts.ts';
-import {CODEGRAPH_NPM_LATEST, installedCodegraphVersion} from './codegraph-bundle.ts';
-import {installCodeGraphBundle} from '../extensions/codegraph/install.ts';
-import {readCodegraphDefault} from '../extensions/shared/plugin-settings.ts';
-import {CAVEMAN_PIN} from './upstream.ts';
+import { patchState, readState, takeLegacy } from '../extensions/shared/state.ts';
+import { refreshPrices } from '../extensions/shared/pricing.ts';
+import { parseHostArg } from './hosts.ts';
+import { CODEGRAPH_NPM_LATEST, installedCodegraphVersion } from './codegraph-bundle.ts';
+import { installCodeGraphBundle } from '../extensions/codegraph/install.ts';
+import { readCodegraphDefault } from '../extensions/shared/plugin-settings.ts';
+import { CAVEMAN_PIN } from './upstream.ts';
 
 const UPDATE_CHECK_TTL_MS = 6 * 60 * 60 * 1000;
 /** How long one source gets before the check gives up on it. */
@@ -191,17 +191,17 @@ export function installerManager(
     args: (target) =>
       IS_WINDOWS
         ? [
-          '/d',
-          '/s',
-          '/c',
-          NPM_BIN,
-          'install',
-          '-g',
-          `${PACKAGE_NAME}${target}`,
-          '--no-audit',
-          '--no-fund',
-          '--prefer-online',
-        ]
+            '/d',
+            '/s',
+            '/c',
+            NPM_BIN,
+            'install',
+            '-g',
+            `${PACKAGE_NAME}${target}`,
+            '--no-audit',
+            '--no-fund',
+            '--prefer-online',
+          ]
         : ['install', '-g', `${PACKAGE_NAME}${target}`, '--no-audit', '--no-fund', '--prefer-online'],
     label: 'npm',
   };
@@ -266,8 +266,8 @@ async function probeUpdatePlan(release: LatestRelease | null): Promise<UpdatePla
       settle(
         rtkBin
           ? execP(rtkBin, ['--version'], { timeout: 5000 }).then(
-            (r) => normalizeRtkVersion(r.stdout.trim() || r.stderr.trim()) || null,
-          )
+              (r) => normalizeRtkVersion(r.stdout.trim() || r.stderr.trim()) || null,
+            )
           : Promise.resolve(null),
         6000,
       ),
@@ -276,8 +276,8 @@ async function probeUpdatePlan(release: LatestRelease | null): Promise<UpdatePla
       settle(
         headroomBin
           ? execP(headroomBin, ['--version'], { timeout: 5000 }).then(
-            (r) => normalizeHeadroom(r.stdout.trim() || r.stderr.trim()) || null,
-          )
+              (r) => normalizeHeadroom(r.stdout.trim() || r.stderr.trim()) || null,
+            )
           : Promise.resolve(null),
         6000,
       ),
@@ -393,12 +393,17 @@ async function runLatestUpdate(hostOverride?: string | string[] | null): Promise
   const cliStale = newerTarget !== null && newerThan(newerTarget, PACKAGE_VERSION);
   const addonStale = stale.filter((line) => !line.startsWith('Tersio'));
   const graphHosts = ['omp', 'pi', 'pig', 'opencode'] as const;
-  const graphEnabled = targets.length === 0
-    ? readCodegraphDefault() === 'on'
-    : targets.some((host) => graphHosts.some((name) => name === host && readCodegraphDefault(name) === 'on'));
+  // An unscoped update serves every agent, so a host that turns CodeGraph on keeps its bundle current even when the shared default is off.
+  const graphEnabled =
+    targets.length === 0
+      ? graphHosts.some((name) => readCodegraphDefault(name) === 'on')
+      : targets.some((host) => graphHosts.some((name) => name === host && readCodegraphDefault(name) === 'on'));
   const [graphCurrent, graphLatest] = plan.codegraph;
   const graphVersion = graphLatest && /^\d+\.\d+\.\d+$/.test(graphLatest) ? graphLatest : undefined;
-  const graphUpdate = graphEnabled && process.env.PI_OFFLINE !== '1' && !process.env.CODEGRAPH_LIB_PATH &&
+  const graphUpdate =
+    graphEnabled &&
+    process.env.PI_OFFLINE !== '1' &&
+    !process.env.CODEGRAPH_LIB_PATH &&
     (!graphCurrent || (graphVersion !== undefined && newerThan(graphVersion, graphCurrent)));
   const updateCodegraph = async (): Promise<void> => {
     if (!graphUpdate) return;
@@ -460,18 +465,18 @@ async function runLatestUpdate(hostOverride?: string | string[] | null): Promise
   // Broken payloads (v2.20.0) crash on boot — smoke-check the target before touching anything installed.
   const smokeArgs = IS_WINDOWS
     ? [
-      '/d',
-      '/s',
-      '/c',
-      'npm',
-      'exec',
-      '--yes',
-      '--prefer-online',
-      `--package=${PACKAGE_NAME}${target}`,
-      '--',
-      PACKAGE_BIN,
-      '--version',
-    ]
+        '/d',
+        '/s',
+        '/c',
+        'npm',
+        'exec',
+        '--yes',
+        '--prefer-online',
+        `--package=${PACKAGE_NAME}${target}`,
+        '--',
+        PACKAGE_BIN,
+        '--version',
+      ]
     : ['exec', '--yes', '--prefer-online', `--package=${PACKAGE_NAME}${target}`, '--', PACKAGE_BIN, '--version'];
   try {
     await execP(npmCommand, smokeArgs, {

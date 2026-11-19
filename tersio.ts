@@ -1,31 +1,31 @@
 #!/usr/bin/env node
 // Install Tersio add-ons on any OMP device; see help for commands.
 import {
-    applyUpdate,
-    codegraph,
-    codexHook,
-    commandArg,
-    currency,
-    dashboard,
-    dashboardBind,
-    dashboardExport,
-    dashboardOpen,
-    dashboardPort,
-    dashboardWatch,
-    doctor,
-    mcp,
-    modes,
-    PACKAGE_BIN,
-    PACKAGE_VERSION,
-    showHelp,
-    showVersion,
-    uninstall,
-    unknownCommand,
-    update,
-    upstream,
+  applyUpdate,
+  codegraph,
+  codexHook,
+  commandArg,
+  currency,
+  dashboard,
+  dashboardBind,
+  dashboardExport,
+  dashboardOpen,
+  dashboardPort,
+  dashboardWatch,
+  doctor,
+  mcp,
+  modes,
+  PACKAGE_BIN,
+  PACKAGE_VERSION,
+  showHelp,
+  showVersion,
+  uninstall,
+  unknownCommand,
+  update,
+  upstream,
 } from './cli/common.ts';
-import {closeRL} from './cli/interactive.ts';
-import {preferBun} from './cli/runtime.ts';
+import { closeRL } from './cli/interactive.ts';
+import { preferBun } from './cli/runtime.ts';
 
 // Each command loads its own module: the installer never pays for the dashboard tree, and a version check never pays for the installer. The imports stay static here so a missing file fails loudly.
 
@@ -39,6 +39,7 @@ Commands:
   dashboard     Open the Dashboard on loopback (--bind lan permits LAN reads)
   mcp           Start the Tersio MCP server on stdio, for any MCP client
   modes         Read or set session defaults, scoped with --host
+  codegraph    Index and query the codebase (status, init, sync, watch, hooks install, explore <symbol>)
   uninstall    Remove the managed extensions
   version      Print the package version
   help         Show this help

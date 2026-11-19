@@ -2,20 +2,20 @@
 // action per agent — no per-session wrap, no ledger of which tool was wrapped when.
 
 import type http from 'node:http';
-import {hostCap} from '../extensions/shared/host-caps.ts';
-import {headroomHostDurable, headroomProxyUrl, type HeadroomUpstreams} from '../extensions/shared/headroom-proxy.ts';
-import {describeHeadroomRoute, readHeadroomRoute} from '../extensions/shared/headroom-routing.ts';
+import { hostCap } from '../extensions/shared/host-caps.ts';
+import { headroomHostDurable, headroomProxyUrl, type HeadroomUpstreams } from '../extensions/shared/headroom-proxy.ts';
+import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
 import {
-    headroomRestartConflict,
-    headroomRoutedHosts,
-    headroomRouteUpstreams,
-    routeHostOff,
-    routeHostOn,
+  headroomRestartConflict,
+  headroomRoutedHosts,
+  headroomRouteUpstreams,
+  routeHostOff,
+  routeHostOn,
 } from '../extensions/shared/headroom-routes.ts';
-import {liveHeadroomUpstreams, stopHeadroomRuntime} from '../extensions/shared/headroom-runtime.ts';
-import {readHeadroomReport} from '../extensions/shared/agent-stats.ts';
-import {detectHosts} from './hosts.ts';
-import {codexPresent, resolveHeadroomBinary, resolveHostBinary} from '../extensions/shared/utils.ts';
+import { liveHeadroomUpstreams, stopHeadroomRuntime } from '../extensions/shared/headroom-runtime.ts';
+import { readHeadroomReport } from '../extensions/shared/agent-stats.ts';
+import { detectHosts } from './hosts.ts';
+import { codexPresent, resolveHeadroomBinary, resolveHostBinary } from '../extensions/shared/utils.ts';
 
 export interface HeadroomRouteCtx {
   json: (res: Pick<http.ServerResponse, 'writeHead' | 'end'>, code: number, body: unknown) => void;

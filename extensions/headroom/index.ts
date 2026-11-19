@@ -1,53 +1,53 @@
 // /headroom session mode: tracks the user's Headroom (headroomlabs-ai) install. Opt-in, so no preset turns it on.
 
 import {
-    getSharedComboState,
-    hasModeState,
-    isOmpSubagentPrompt,
-    lastCustomValue,
-    normalizeInputCommand,
-    normalizeMode,
-    reconcileSharedComboEntries,
-    sessionEntries,
-    setSharedComboListener,
-    setSharedComboMode,
-    systemPromptIncludes,
+  getSharedComboState,
+  hasModeState,
+  isOmpSubagentPrompt,
+  lastCustomValue,
+  normalizeInputCommand,
+  normalizeMode,
+  reconcileSharedComboEntries,
+  sessionEntries,
+  setSharedComboListener,
+  setSharedComboMode,
+  systemPromptIncludes,
 } from '../shared/session-state.ts';
-import {hostIdOf, injectPromptText, onHostEvent, sessionChangeEvents, setExtensionLabel} from '../shared/host.ts';
-import {announceStatus} from '../shared/status.ts';
-import type {HostScope} from '../shared/plugin-settings.ts';
-import {readHeadroomDefault, saveModeState} from '../shared/plugin-settings.ts';
-import {resolveHeadroomBinary} from '../shared/utils.ts';
+import { hostIdOf, injectPromptText, onHostEvent, sessionChangeEvents, setExtensionLabel } from '../shared/host.ts';
+import { announceStatus } from '../shared/status.ts';
+import type { HostScope } from '../shared/plugin-settings.ts';
+import { readHeadroomDefault, saveModeState } from '../shared/plugin-settings.ts';
+import { resolveHeadroomBinary } from '../shared/utils.ts';
 import {
-    headroomHostSupported,
-    headroomProxyPort,
-    headroomProxyUrl,
-    isHeadroomCompatibleApi,
-    ompProviderUpstream,
-    routeOmpModel,
+  headroomHostSupported,
+  headroomProxyPort,
+  headroomProxyUrl,
+  isHeadroomCompatibleApi,
+  ompProviderUpstream,
+  routeOmpModel,
 } from '../shared/headroom-proxy.ts';
-import type {HeadroomRoute} from '../shared/headroom-routing.ts';
-import {describeHeadroomRoute, readHeadroomRoute, sameProxyEndpoint} from '../shared/headroom-routing.ts';
+import type { HeadroomRoute } from '../shared/headroom-routing.ts';
+import { describeHeadroomRoute, readHeadroomRoute, sameProxyEndpoint } from '../shared/headroom-routing.ts';
 import {
-    headroomRestartConflict,
-    headroomRoutedHosts,
-    headroomRouteUpstreams,
-    repairHeadroomRoute
+  headroomRestartConflict,
+  headroomRoutedHosts,
+  headroomRouteUpstreams,
+  repairHeadroomRoute,
 } from '../shared/headroom-routes.ts';
 import {
-    ensureHeadroomRuntime,
-    liveHeadroomUpstreams,
-    releaseHeadroomLease,
-    touchHeadroomLease
+  ensureHeadroomRuntime,
+  liveHeadroomUpstreams,
+  releaseHeadroomLease,
+  touchHeadroomLease,
 } from '../shared/headroom-runtime.ts';
-import {ensureTersioMcp} from '../shared/mcp-config.ts';
+import { ensureTersioMcp } from '../shared/mcp-config.ts';
 import type {
-    AgentModel,
-    ExtensionApi,
-    ExtensionCtx,
-    InputEvent,
-    SessionEntry,
-    SystemPromptEvent
+  AgentModel,
+  ExtensionApi,
+  ExtensionCtx,
+  InputEvent,
+  SessionEntry,
+  SystemPromptEvent,
 } from '../shared/types.ts';
 
 const DEFAULT_MODE = 'off';
@@ -165,7 +165,7 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
       baseUrl: `${root}${/anthropic|google-gemini-cli/.test(model.api) ? '' : '/v1'}`,
       headers,
       resolveHeaders: async (signal) => {
-        const resolved = { ...headers, ...await source.resolveHeaders?.(signal) };
+        const resolved = { ...headers, ...(await source.resolveHeaders?.(signal)) };
         for (const name of Object.keys(resolved)) {
           if (name.toLowerCase() === 'x-headroom-base-url') delete resolved[name];
         }
@@ -200,8 +200,13 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     if (host !== 'omp' || !model) return undefined;
     const proxyUrl = headroomProxyUrl();
     const route: HeadroomRoute = {
-      measured: true, failure: '', host, proxyUrl, model: `${model.provider}/${model.id}`,
-      provider: model.provider, baseUrl: model.baseUrl,
+      measured: true,
+      failure: '',
+      host,
+      proxyUrl,
+      model: `${model.provider}/${model.id}`,
+      provider: model.provider,
+      baseUrl: model.baseUrl,
       routed: sameProxyEndpoint(model.baseUrl, proxyUrl),
     };
     const bin = resolveHeadroomBinary();
@@ -222,11 +227,15 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     }
     // Only the selected provider is written, not every role and fallback in config.yml.
     if (!routeOmpModel(`${model.provider}/${model.id}`, headroomProxyPort())) {
-      throw new Error(`Headroom: could not persist a recoverable route for ${model.provider}. Proxy routing is not ready.`);
+      throw new Error(
+        `Headroom: could not persist a recoverable route for ${model.provider}. Proxy routing is not ready.`,
+      );
     }
     const thinking = pi.getThinkingLevel?.();
     if (!(await pi.setModel(routed))) {
-      throw new Error(`Headroom: could not update the live ${model.provider} model endpoint. Proxy routing is not ready.`);
+      throw new Error(
+        `Headroom: could not update the live ${model.provider} model endpoint. Proxy routing is not ready.`,
+      );
     }
     if (thinking !== undefined) await pi.setThinkingLevel?.(thinking);
     routeWarning = '';
@@ -311,8 +320,7 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     // OMP may repair an unrouted provider during before_agent_start; start with its upstreams first,
     // or the repair guard sees Headroom's public defaults and correctly refuses to route it.
     const routedHosts = headroomRoutedHosts();
-    const upstreamHost =
-      (host === 'omp' && route.measured) ? host : routedHosts.includes('omp') ? 'omp' : routedHosts[0];
+    const upstreamHost = host === 'omp' && route.measured ? host : routedHosts.includes('omp') ? 'omp' : routedHosts[0];
     const upstreams = upstreamHost ? headroomRouteUpstreams(upstreamHost) : {};
     if (Object.keys(upstreams).length > 0) {
       const conflict = headroomRestartConflict(upstreamHost ?? host, upstreams, liveHeadroomUpstreams());

@@ -1,8 +1,8 @@
 // One status string every surface renders: host footer, CLI title, dashboard banner. Nothing else formats mode state.
-import {getSharedComboState} from './session-state.ts';
+import { getSharedComboState } from './session-state.ts';
 import { readStatusVisible } from './plugin-settings.ts';
 import type { HostScope } from './plugin-settings.ts';
-import type {ExtensionCtx, UiApi} from './types.ts';
+import type { ExtensionCtx, UiApi } from './types.ts';
 
 export interface StatusState {
   level: string;

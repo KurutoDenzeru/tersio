@@ -2,19 +2,19 @@ import process from 'node:process';
 import path from 'node:path';
 
 import {
-    ensureInitializedAndWatching,
-    exploreSymbol,
-    findRepoRoot,
-    getCodeGraph,
-    getCodeGraphStatus,
-    getComplexityScore,
-    onToolFinished,
-    stopAllWatchers,
-    stopWatching,
-    syncCodeGraph,
+  ensureInitializedAndWatching,
+  exploreSymbol,
+  findRepoRoot,
+  getCodeGraph,
+  getCodeGraphStatus,
+  getComplexityScore,
+  onToolFinished,
+  stopAllWatchers,
+  stopWatching,
+  syncCodeGraph,
 } from './shared.ts';
-import {clearWatcherStatus, writeWatcherStatus} from './status-file.ts';
-import type {HostScope} from '../shared/plugin-settings.ts';
+import { clearWatcherStatus, writeWatcherStatus } from './status-file.ts';
+import type { HostScope } from '../shared/plugin-settings.ts';
 
 const hosts: readonly HostScope[] = ['omp', 'pi', 'pig', 'opencode', 'codex', 'claude'];
 const watchedRoots = new Set<string>();
@@ -31,7 +31,7 @@ function publishWatcherStatus(root: string): Promise<void> {
   const publication = (async () => {
     try {
       let status = await getCodeGraphStatus(root);
-      if (status.initialized && !status.isWatching && !status.isIndexing && !status.error) {
+      if (status.initialized && !status.isWatching && !status.isIndexing && !status.error && watchedRoots.has(root)) {
         await ensureInitializedAndWatching(root);
         status = await getCodeGraphStatus(root);
       }
@@ -65,7 +65,6 @@ function stopStatusTracking(root: string): void {
   }
 }
 
-
 type WorkerRequest =
   | { id: number; op: 'ensure' | 'status' | 'sync' | 'stop' | 'index'; root: string }
   | { id: number; op: 'explore' | 'complexity'; root: string; query: string }
@@ -81,9 +80,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function parseRequest(value: unknown): WorkerRequest {
   if (!isRecord(value)) throw new Error('Request must be an object.');
-  if (typeof value.id !== 'number' || !Number.isFinite(value.id)) throw new Error('Request id must be a finite number.');
+  if (typeof value.id !== 'number' || !Number.isFinite(value.id))
+    throw new Error('Request id must be a finite number.');
   if (typeof value.op !== 'string') throw new Error('Request op must be a string.');
-  if (typeof value.root !== 'string' || value.root.length === 0) throw new Error('Request root must be a non-empty string.');
+  if (typeof value.root !== 'string' || value.root.length === 0)
+    throw new Error('Request root must be a non-empty string.');
 
   switch (value.op) {
     case 'ensure':
@@ -99,7 +100,8 @@ function parseRequest(value: unknown): WorkerRequest {
       }
       return { id: value.id, op: value.op, root: value.root, query: value.query };
     case 'tool':
-      if (typeof value.tool !== 'string' || value.tool.length === 0) throw new Error('Request tool must be a non-empty string.');
+      if (typeof value.tool !== 'string' || value.tool.length === 0)
+        throw new Error('Request tool must be a non-empty string.');
       if (typeof value.isError !== 'boolean') throw new Error('Request isError must be a boolean.');
       if (value.host !== null && !isHost(value.host)) {
         throw new Error('Request host must be a supported host or null.');

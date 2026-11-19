@@ -1,12 +1,12 @@
 // The agent-stats layer the dashboard and the MCP server both read: one memo, one across-restart cache,
 // and the sync throttle, so two entry points answer from the same rules instead of drifting apart.
-import {readdirSync, readFileSync, rmSync, statSync} from 'node:fs';
+import { readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
-import {cacheDelete, cacheGet, cacheKeys, cachePut, cacheStamp} from './cache-store.ts';
-import {agentDbPath, readAgentStats, statsDbPath} from './agent-stats.ts';
-import type {AgentStats, AgentView, RangeKey} from './agent-types.ts';
-import {tersioHome} from './utils.ts';
-import {syncUsageDb} from './usage-store.ts';
+import { cacheDelete, cacheGet, cacheKeys, cachePut, cacheStamp } from './cache-store.ts';
+import { agentDbPath, readAgentStats, statsDbPath } from './agent-stats.ts';
+import type { AgentStats, AgentView, RangeKey } from './agent-types.ts';
+import { tersioHome } from './utils.ts';
+import { syncUsageDb } from './usage-store.ts';
 
 /** The range a page opens on, matching the reference dashboard. */
 export const DEFAULT_AGENT_RANGE: RangeKey = '24h';

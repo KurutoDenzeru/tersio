@@ -1,18 +1,18 @@
-import {describe, expect, test} from 'vitest';
+import { describe, expect, test } from 'vitest';
 import http from 'node:http';
 import net from 'node:net';
 import {
-    agentJson,
-    dashboardRequestAllowed,
-    healthJson,
-    isVendorTool,
-    json,
-    lanUrls,
-    resolveBind,
-    shouldAutoWatch,
-    statusJson,
+  agentJson,
+  dashboardRequestAllowed,
+  healthJson,
+  isVendorTool,
+  json,
+  lanUrls,
+  resolveBind,
+  shouldAutoWatch,
+  statusJson,
 } from '../../cli/dashboard.ts';
-import {withHome} from '../helpers/env.ts';
+import { withHome } from '../helpers/env.ts';
 
 // The route handlers pass these names straight to a child process, so the guards are the boundary.
 describe('dashboard route guards', () => {
@@ -76,18 +76,26 @@ test('dashboard rejects cross-origin writes and DNS rebinding', async () => {
   const base = `http://127.0.0.1:${address.port}`;
   try {
     expect((await fetch(`${base}/settings`, { method: 'POST', headers: { Origin: base } })).status).toBe(200);
-    expect((await fetch(`${base}/settings`, { method: 'POST', headers: { Origin: 'https://attacker.example' } })).status).toBe(403);
+    expect(
+      (await fetch(`${base}/settings`, { method: 'POST', headers: { Origin: 'https://attacker.example' } })).status,
+    ).toBe(403);
     const rebound = await new Promise<number>((resolve, reject) => {
-      const request = http.get(`${base}/settings`, { headers: { Host: `attacker.example:${address.port}` } }, (response) => {
-        response.resume();
-        resolve(response.statusCode ?? 0);
-      });
+      const request = http.get(
+        `${base}/settings`,
+        { headers: { Host: `attacker.example:${address.port}` } },
+        (response) => {
+          response.resume();
+          resolve(response.statusCode ?? 0);
+        },
+      );
       request.on('error', reject);
     });
     expect(rebound).toBe(403);
-    expect((await fetch(`${base}/settings`, { method: 'POST', headers: { 'Sec-Fetch-Site': 'cross-site' } })).status).toBe(403);
+    expect(
+      (await fetch(`${base}/settings`, { method: 'POST', headers: { 'Sec-Fetch-Site': 'cross-site' } })).status,
+    ).toBe(403);
   } finally {
-    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   }
 });
 

@@ -1,15 +1,15 @@
-import {CODEGRAPH_SYNC_MODES} from '../extensions/shared/plugin-settings.ts';
+import { CODEGRAPH_SYNC_MODES } from '../extensions/shared/plugin-settings.ts';
 // cli/common.ts — shared foundation: CLI flags, paths, exec, file/config helpers.
-import {execFile} from 'node:child_process';
-import {existsSync, promises as fs} from 'node:fs';
+import { execFile } from 'node:child_process';
+import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
-import {promisify} from 'node:util';
-import {createRequire} from 'node:module';
-import {fileURLToPath} from 'node:url';
-import {findPackageRoot, readTextIfExists} from '../extensions/shared/utils.ts';
-import type {CurrencyCode} from './currency.ts';
-import {parseCurrencyFlag, readStoredCurrency} from './currency.ts';
-import {recordActivity, shortPath} from './activity.ts';
+import { promisify } from 'node:util';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import { findPackageRoot, readTextIfExists } from '../extensions/shared/utils.ts';
+import type { CurrencyCode } from './currency.ts';
+import { parseCurrencyFlag, readStoredCurrency } from './currency.ts';
+import { recordActivity, shortPath } from './activity.ts';
 
 const IS_WINDOWS = process.platform === 'win32';
 const RTK_BINARY_NAME = IS_WINDOWS ? 'rtk.exe' : 'rtk';
@@ -136,7 +136,7 @@ const upstream = command === 'upstream' || args.includes('--upstream');
 export const DEFAULT_DASHBOARD_PORT = 3456;
 const rawPort = flagValue('--port');
 const envPort = Number.parseInt(process.env.TERSIO_DASHBOARD_PORT ?? '', 10) || 0;
-const dashboardPort = rawPort !== undefined ? (Number.parseInt(rawPort, 10) || 0) : (envPort || DEFAULT_DASHBOARD_PORT);
+const dashboardPort = rawPort !== undefined ? Number.parseInt(rawPort, 10) || 0 : envPort || DEFAULT_DASHBOARD_PORT;
 // The dashboard listens on loopback unless asked otherwise: `--lan`, `--bind <addr>`, or `--host lan`. `--host` names an agent for install, so only a value that is not an agent id reads as an address.
 const hostArg = flagValue('--host');
 const dashboardBind = args.includes('--local')
@@ -280,7 +280,7 @@ async function writeConfigLines(
   options: WriteOptions = {},
 ): Promise<void> {
   await fs.mkdir(path.dirname(configPath), { recursive: true });
-  await fs.copyFile(configPath, `${configPath}.bak`).catch(() => { });
+  await fs.copyFile(configPath, `${configPath}.bak`).catch(() => {});
   await fs.writeFile(configPath, lines.join('\n'), 'utf8');
   if (verbose && !options.quiet) console.log(logMsg);
 }

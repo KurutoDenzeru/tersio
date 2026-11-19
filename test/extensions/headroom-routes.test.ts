@@ -1,21 +1,21 @@
-import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import {describe, expect, test} from 'vitest';
-import {fakeExecutable, withHome} from '../helpers/env.ts';
-import {readHeadroomRoute} from '../../extensions/shared/headroom-routing.ts';
+import { describe, expect, test } from 'vitest';
+import { fakeExecutable, withHome } from '../helpers/env.ts';
+import { readHeadroomRoute } from '../../extensions/shared/headroom-routing.ts';
 import {
-    hasNativeRoute,
-    headroomRoutedHosts,
-    inferCodexRootBackup,
-    installNativeRoute,
-    nativeProxyUrl,
-    removeNativeRoute,
-    removeTomlSection,
-    repairHeadroomRoute,
-    restoreCodexRoot,
-    routeHostOff,
-    routeHostOn,
-    setTomlSectionValue,
+  hasNativeRoute,
+  headroomRoutedHosts,
+  inferCodexRootBackup,
+  installNativeRoute,
+  nativeProxyUrl,
+  removeNativeRoute,
+  removeTomlSection,
+  repairHeadroomRoute,
+  restoreCodexRoot,
+  routeHostOff,
+  routeHostOn,
+  setTomlSectionValue,
 } from '../../extensions/shared/headroom-routes.ts';
 
 const PROXY = 'http://127.0.0.1:8787/';
@@ -260,9 +260,9 @@ hooks = true
 
         const routed = installNativeRoute('pi', proxyUrl);
         expect(routed.ok, routed.detail).toBe(true);
-        expect(JSON.parse(readFileSync(path.join(home, '.pi', 'agent', 'models.json'), 'utf8')).providers.magpie.baseUrl).toBe(
-          'http://127.0.0.1:9911/v1',
-        );
+        expect(
+          JSON.parse(readFileSync(path.join(home, '.pi', 'agent', 'models.json'), 'utf8')).providers.magpie.baseUrl,
+        ).toBe('http://127.0.0.1:9911/v1');
       } finally {
         if (previousUrl === undefined) delete process.env.TERSIO_HEADROOM_PROXY_URL;
         else process.env.TERSIO_HEADROOM_PROXY_URL = previousUrl;
