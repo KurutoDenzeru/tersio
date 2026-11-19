@@ -108,7 +108,9 @@ function isOffCommand(text: unknown): boolean {
 }
 
 function hasUpstreamHeader(model: AgentModel): boolean {
-  return Object.keys(model.headers ?? {}).some((name) => name.toLowerCase() === 'x-headroom-base-url');
+  return Object.entries(model.headers ?? {}).some(
+    ([name, value]) => name.toLowerCase() === 'x-headroom-base-url' && typeof value === 'string' && value.trim() !== '',
+  );
 }
 
 export default function headroomSessionExtension(pi: ExtensionApi): void {

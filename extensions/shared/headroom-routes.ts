@@ -684,16 +684,18 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
     }
   }
   // A route only makes sense when the proxy names the provider it replaces for this protocol.
+  let live: { value: ReturnType<typeof liveHeadroomUpstreams> } | undefined;
   for (const target of targets) {
     const anthropic = /anthropic/i.test(target.api);
     // A host with no endpoint of its own still has a public default the proxy must name.
     const expected = target.original || (anthropic ? 'https://api.anthropic.com' : '');
-    // The saved deployment is one source; a proxy the dashboard started directly names its upstream only in its live flags.
+    // A running proxy is what the route will actually reach, so its flags win; the saved deployment
+    // answers only when none can be read. An absent flag means headroom's public default.
     const port = headroomProxyPort(proxyUrl);
-    const upstream =
-      headroomProxyUpstream(target.api, undefined, port) ??
-      liveHeadroomUpstreams(port)?.[anthropic ? 'anthropic' : 'openai'] ??
-      null;
+    live ??= { value: liveHeadroomUpstreams(port) };
+    const upstream = live.value
+      ? liveUpstream(live.value, anthropic ? 'anthropic' : 'openai')
+      : headroomProxyUpstream(target.api, undefined, port);
     if (!upstream) {
       const flag = anthropic ? '--anthropic-api-url' : '--openai-api-url';
       return {

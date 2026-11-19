@@ -174,7 +174,7 @@ export async function getCodeGraph(projectRoot = process.cwd(), autoInit = true)
 export async function exploreSymbol(query: string, projectRoot = process.cwd()): Promise<ExploreResult> {
   // Half an index answers with half the callers and a wrong blast radius; say so instead.
   const building = activeWatchers.get(requireRepoRoot(projectRoot));
-  if (building && building.status !== 'ready') {
+  if (building?.status === 'indexing') {
     throw new Error('CodeGraph is still building its first index for this repository; try again shortly.');
   }
   const cg = await getCodeGraph(projectRoot, true);

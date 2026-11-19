@@ -80,6 +80,8 @@ export async function runCodegraph(args: string[]): Promise<void> {
         try {
           const current = await getCodeGraphStatus(projectRoot);
           if (current.isWatching || current.isIndexing) return;
+          // A failed start is reported, not retried on every tick.
+          if (current.error) throw new Error(current.error);
           if (!(await ensureInitializedAndWatching(projectRoot))) throw new Error('the watcher could not be restarted');
         } catch (error) {
           console.error(`CodeGraph watcher stopped: ${(error as Error).message}`);

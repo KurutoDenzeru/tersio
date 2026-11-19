@@ -90,10 +90,28 @@ const path = require('node:path');
   return metadata.version;
 }
 
+const NPMJS_REGISTRY = 'https://registry.npmjs.org';
+
 /** The registry the bundle comes from: npmjs unless TERSIO_CODEGRAPH_REGISTRY names a mirror (for networks that block npmjs). */
 export function codegraphRegistry(): string {
-  const custom = process.env.TERSIO_CODEGRAPH_REGISTRY?.trim().replace(/\/+$/, '');
-  return custom && /^https?:\/\//.test(custom) ? custom : 'https://registry.npmjs.org';
+  const raw = process.env.TERSIO_CODEGRAPH_REGISTRY?.trim();
+  if (!raw) return NPMJS_REGISTRY;
+  // The value reaches `npm.cmd` through cmd.exe on Windows, so anything cmd treats as syntax is refused.
+  let valid = !/[\s&|^<>%"']/.test(raw);
+  if (valid) {
+    try {
+      valid = /^https?:$/.test(new URL(raw).protocol);
+    } catch {
+      valid = false;
+    }
+  }
+  if (!valid) {
+    process.emitWarning(`TERSIO_CODEGRAPH_REGISTRY is not a plain http(s) URL, so ${NPMJS_REGISTRY} is used instead.`, {
+      code: 'TERSIO_CODEGRAPH_REGISTRY',
+    });
+    return NPMJS_REGISTRY;
+  }
+  return raw.replace(/\/+$/, '');
 }
 
 export async function installCodeGraphBundle(version?: string, signal?: AbortSignal): Promise<string> {

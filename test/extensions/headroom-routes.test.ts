@@ -1,7 +1,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { fakeExecutable, withHome } from '../helpers/env.ts';
+import { liveHeadroomUpstreams } from '../../extensions/shared/headroom-runtime.ts';
 import { readHeadroomRoute } from '../../extensions/shared/headroom-routing.ts';
 import {
   hasNativeRoute,
@@ -17,6 +18,11 @@ import {
   routeHostOn,
   setTomlSectionValue,
 } from '../../extensions/shared/headroom-routes.ts';
+
+vi.mock('../../extensions/shared/headroom-runtime.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../extensions/shared/headroom-runtime.ts')>()),
+  liveHeadroomUpstreams: vi.fn<() => ReturnType<typeof liveHeadroomUpstreams>>(() => null),
+}));
 
 const PROXY = 'http://127.0.0.1:8787/';
 
@@ -210,6 +216,34 @@ hooks = true
       expect(refused.ok).toBe(false);
       expect(refused.detail).toContain('not Headroom');
       expect(readFileSync(modelsFile, 'utf8')).toBe(before);
+    }));
+
+  test('routes OpenCode from the live proxy flags when no deployment is saved, and prefers them to a stale one', () =>
+    withHome((home) => {
+      const file = path.join(home, '.config', 'opencode', 'opencode.json');
+      mkdirSync(path.dirname(file), { recursive: true });
+      writeFileSync(
+        file,
+        JSON.stringify({
+          model: 'anthropic/claude-sonnet-4-5',
+          providers: {
+            anthropic: {
+              package: '@opencode/ai/providers/anthropic',
+              settings: { baseURL: 'https://api.anthropic.com' },
+            },
+          },
+        }),
+        'utf8',
+      );
+      // The running proxy names no Anthropic flag, so it forwards to the public API.
+      vi.mocked(liveHeadroomUpstreams).mockReturnValue({});
+      try {
+        // A saved deployment that disagrees must not outweigh the proxy that is actually running.
+        headroomManifest(home, { ANTHROPIC_TARGET_API_URL: 'https://stale.example.test' });
+        expect(installNativeRoute('opencode', PROXY).ok).toBe(true);
+      } finally {
+        vi.mocked(liveHeadroomUpstreams).mockReturnValue(null);
+      }
     }));
 
   test('validates OpenCode Anthropic package against the Anthropic upstream', () =>

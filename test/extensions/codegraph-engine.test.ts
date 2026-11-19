@@ -261,8 +261,13 @@ describe('codegraphRegistry', () => {
       expect(codegraphRegistry()).toBe('https://registry.npmjs.org');
       process.env.TERSIO_CODEGRAPH_REGISTRY = 'https://npm.example.test/';
       expect(codegraphRegistry()).toBe('https://npm.example.test');
-      process.env.TERSIO_CODEGRAPH_REGISTRY = 'not-a-url';
-      expect(codegraphRegistry()).toBe('https://registry.npmjs.org');
+      process.env.TERSIO_CODEGRAPH_REGISTRY = 'HTTPS://npm.example.test/';
+      expect(codegraphRegistry()).toBe('HTTPS://npm.example.test');
+      // Not a URL, or carrying characters cmd.exe treats as syntax: refused, never passed to npm.
+      for (const bad of ['not-a-url', 'ftp://npm.example.test', 'https://npm.example.test/?a=1&b=2']) {
+        process.env.TERSIO_CODEGRAPH_REGISTRY = bad;
+        expect(codegraphRegistry()).toBe('https://registry.npmjs.org');
+      }
     } finally {
       if (previous === undefined) delete process.env.TERSIO_CODEGRAPH_REGISTRY;
       else process.env.TERSIO_CODEGRAPH_REGISTRY = previous;
