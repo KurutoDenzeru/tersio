@@ -21,6 +21,7 @@ export interface Node {
   updatedAt?: number;
 }
 
+/** One upstream graph edge; callers and impact results carry them. */
 export interface Edge {
   source: string;
   target: string;

@@ -189,72 +189,49 @@ export async function exploreSymbol(query: string, projectRoot = process.cwd()):
     for (const node of nodes.slice(0, 10)) {
       const callers = await cg.getCallers(node.id);
       const impact = await cg.getImpactRadius(node.id);
-
-      // Extract unique affected files
-      const affectedFiles = new Set<string>();
-      if (impact.nodes) {
-        for (const n of impact.nodes.values()) {
-          if (n.filePath) affectedFiles.add(n.filePath);
-        }
-      }
-
+      const files = new Set<string>();
+      for (const hit of impact.nodes?.values() ?? []) if (hit.filePath) files.add(hit.filePath);
       symbols.push({
         node,
         callers,
         blastRadius: {
           affectedNodes: impact.nodes?.size ?? 0,
-          affectedFiles: affectedFiles.size,
+          affectedFiles: files.size,
           affectedEdges: impact.edges?.length ?? 0,
         },
       });
     }
 
-    return {
-      query,
-      symbols,
-    };
+    return { query, symbols };
   } finally {
     cg.close();
   }
 }
 
 /**
- * Get blast radius complexity metrics for a symbol or file.
+ * The one rendering of an explore answer: the extension tool, the MCP tool, and the CLI all print
+ * this, so the three never drift.
  */
-export async function getComplexityScore(
-  symbolOrFile: string,
-  projectRoot = process.cwd(),
-): Promise<{ maxBlastRadius: number; affectedFiles: number }> {
-  try {
-    const cg = await getCodeGraph(projectRoot, false);
-    try {
-      const nodes = await cg.getNodesByName(symbolOrFile);
-      if (nodes.length === 0) return { maxBlastRadius: 0, affectedFiles: 0 };
-
-      let maxBlast = 0;
-      let maxFiles = 0;
-
-      for (const node of nodes) {
-        const impact = await cg.getImpactRadius(node.id);
-        const count = impact.nodes?.size ?? 0;
-        if (count > maxBlast) maxBlast = count;
-
-        const files = new Set<string>();
-        if (impact.nodes) {
-          for (const n of impact.nodes.values()) {
-            if (n.filePath) files.add(n.filePath);
-          }
-        }
-        if (files.size > maxFiles) maxFiles = files.size;
-      }
-
-      return { maxBlastRadius: maxBlast, affectedFiles: maxFiles };
-    } finally {
-      cg.close();
+export function formatExplore(result: ExploreResult, callers = 5): string {
+  if (result.symbols.length === 0) return `CodeGraph: No symbols found matching "${result.query}".`;
+  const lines = [`# CodeGraph Explore: "${result.query}"`, `Found ${result.symbols.length} symbol(s):`];
+  for (const symbol of result.symbols) {
+    const { node, callers: found, blastRadius } = symbol;
+    lines.push(
+      `\n## ${node.kind} ${node.qualifiedName ?? node.name} (${node.filePath}:${node.startLine})`,
+    );
+    if (node.signature) lines.push(`Signature: \`${node.signature}\``);
+    lines.push(`Blast radius: ${blastRadius.affectedNodes} nodes across ${blastRadius.affectedFiles} file(s)`);
+    if (found.length === 0) {
+      lines.push('No direct callers recorded in graph.');
+      continue;
     }
-  } catch {
-    return { maxBlastRadius: 0, affectedFiles: 0 };
+    lines.push(`Callers (${found.length}):`);
+    for (const caller of found.slice(0, callers))
+      lines.push(`  - ${caller.node.qualifiedName ?? caller.node.name} in ${caller.node.filePath}:${caller.node.startLine}`);
+    if (found.length > callers) lines.push(`  ... and ${found.length - callers} more callers`);
   }
+  return lines.join('\n');
 }
 
 // Sync mode -> interval. `live` uses the upstream FileWatcher instead; `manual` has no timer.

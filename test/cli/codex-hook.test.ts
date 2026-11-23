@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
-import { fakeExecutable } from '../helpers/env.ts';
+import { fakeExecutable, cliEnv } from '../helpers/env.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const installer = path.join(root, 'tersio.ts');
@@ -49,13 +49,10 @@ function hook(
     input: `${JSON.stringify({ prompt: 'hello', cwd: setup.repo, session_id: 's1' })}\n`,
     encoding: 'utf8',
     timeout: 20000,
-    env: {
-      ...process.env,
-      HOME: setup.home,
-      TERSIO_HOME: path.join(setup.home, '.tersio'),
+    env: cliEnv(setup.home, {
       CODEGRAPH_PROBE: setup.marker,
       PATH: `${setup.dir}${path.delimiter}${process.env.PATH}`,
-    },
+    }),
   });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }

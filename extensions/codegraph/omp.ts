@@ -10,7 +10,7 @@ import {
   stopWatching,
   syncCodeGraph,
 } from './client.ts';
-import { findRepoRoot, resolveCodeGraphLibrary } from './shared.ts';
+import { findRepoRoot, formatExplore, resolveCodeGraphLibrary } from './shared.ts';
 import { readCodegraphDefault } from '../shared/plugin-settings.ts';
 import { hostIdOf } from '../shared/host.ts';
 import type { ExtensionApi, ExtensionCtx, ToolResultEvent } from '../shared/types.ts';
@@ -23,22 +23,29 @@ interface ZodFactory {
   string(): ZodChain;
 }
 
-/** OMP validates tool arguments with zod; pi and OpenCode take plain JSON Schema. */
-function queryParameters(pi: ExtensionApi): unknown {
-  const description = 'Symbol name, function name, class, or search query to explore.';
+/** OMP validates tool arguments with zod; pi and OpenCode take plain JSON Schema. A null query means no arguments. */
+function parameters(pi: ExtensionApi, query: string | null): unknown {
   if (pi.zod) {
     const { z } = pi.zod as { z: ZodFactory };
-    return z.object({ query: z.string().describe(description) });
+    return query ? z.object({ query: z.string().describe(query) }) : z.object({});
   }
-  return { type: 'object', properties: { query: { type: 'string', description } }, required: ['query'] };
+  return query
+    ? { type: 'object', properties: { query: { type: 'string', description: query } }, required: ['query'] }
+    : { type: 'object', properties: {} };
 }
 
-function emptyParameters(pi: ExtensionApi): unknown {
-  if (pi.zod) {
-    const { z } = pi.zod as { z: ZodFactory };
-    return z.object({});
-  }
-  return { type: 'object', properties: {} };
+/** Both tools answer through one envelope, so a failure reads the same wherever it comes from. */
+function toolResult(
+  work: () => Promise<{ text: string; details: Record<string, unknown> }>,
+): Promise<{ isError: boolean; content: Array<{ type: 'text'; text: string }>; details: Record<string, unknown> }> {
+  return work().then(
+    ({ text, details }) => ({ isError: false, content: [{ type: 'text' as const, text }], details }),
+    (error: unknown) => ({
+      isError: true,
+      content: [{ type: 'text' as const, text: `CodeGraph error: ${(error as Error).message}` }],
+      details: { error: (error as Error).message },
+    }),
+  );
 }
 
 export default function codegraphExtension(pi: ExtensionApi): void {
@@ -109,7 +116,7 @@ export default function codegraphExtension(pi: ExtensionApi): void {
     name: 'codegraph_explore',
     label: 'CodeGraph Explore',
     description: 'Explore code structure, symbol definitions, callers, dependencies, and blast radius in one call.',
-    parameters: queryParameters(pi),
+    parameters: parameters(pi, 'Symbol name, function name, class, or search query to explore.'),
     execute: async (
       _toolCallId: string,
       params: { args: string[] },
@@ -117,71 +124,15 @@ export default function codegraphExtension(pi: ExtensionApi): void {
       _onUpdate: ((data: unknown) => void) | undefined,
       ctx: ExtensionCtx | undefined,
     ) => {
-      try {
-        let query = '';
-        if (Array.isArray(params?.args) && params.args.length > 0) {
-          query = String(params.args[0]);
-        } else if (params && typeof params === 'object') {
-          const dict: Record<string, unknown> = params;
-          const raw = dict.query;
-          if (typeof raw === 'string') query = raw;
-        }
-
-        if (!query) {
-          return {
-            isError: true,
-            content: [{ type: 'text', text: 'Error: missing query argument for codegraph_explore.' }],
-            details: { error: 'missing_query' },
-          };
-        }
-
-        const projectRoot = ctx?.cwd ?? process.cwd();
-        const result = await exploreSymbol(query, projectRoot);
-
-        if (result.symbols.length === 0) {
-          return {
-            isError: false,
-            content: [{ type: 'text', text: `CodeGraph: No symbols found matching "${query}".` }],
-            details: { found: 0 },
-          };
-        }
-
-        const lines: string[] = [`# CodeGraph Explore: "${query}"`, `Found ${result.symbols.length} symbol(s):`];
-
-        for (const s of result.symbols) {
-          lines.push(
-            `\n## ${s.node.kind} ${s.node.qualifiedName ?? s.node.name} (${s.node.filePath}:${s.node.startLine})`,
-          );
-          if (s.node.signature) lines.push(`Signature: \`${s.node.signature}\``);
-          lines.push(
-            `Blast radius: ${s.blastRadius.affectedNodes} nodes across ${s.blastRadius.affectedFiles} file(s)`,
-          );
-
-          if (s.callers.length > 0) {
-            lines.push(`Callers (${s.callers.length}):`);
-            for (const c of s.callers.slice(0, 5)) {
-              lines.push(`  - ${c.node.qualifiedName ?? c.node.name} in ${c.node.filePath}:${c.node.startLine}`);
-            }
-            if (s.callers.length > 5) {
-              lines.push(`  ... and ${s.callers.length - 5} more callers`);
-            }
-          } else {
-            lines.push('No direct callers recorded in graph.');
-          }
-        }
-
-        return {
-          isError: false,
-          content: [{ type: 'text', text: lines.join('\n') }],
-          details: { found: result.symbols.length },
-        };
-      } catch (err) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `CodeGraph error: ${(err as Error).message}` }],
-          details: { error: (err as Error).message },
-        };
-      }
+      return toolResult(async () => {
+        // A host may hand the arguments as a positional list or as the named field.
+        const list = Array.isArray(params?.args) ? params.args : [];
+        const raw = list.length > 0 ? list[0] : (params as { query?: unknown })?.query;
+        const query = typeof raw === 'string' ? raw.trim() : '';
+        if (!query) return { text: 'Error: missing query argument for codegraph_explore.', details: { error: 'missing_query' } };
+        const result = await exploreSymbol(query, ctx?.cwd ?? process.cwd());
+        return { text: formatExplore(result), details: { found: result.symbols.length } };
+      });
     },
   });
 
@@ -190,7 +141,7 @@ export default function codegraphExtension(pi: ExtensionApi): void {
     name: 'codegraph_sync',
     label: 'CodeGraph Sync',
     description: 'Incrementally sync modified files into the CodeGraph index.',
-    parameters: emptyParameters(pi),
+    parameters: parameters(pi, null),
     execute: async (
       _toolCallId: string,
       _params: { args: string[] },
@@ -198,27 +149,14 @@ export default function codegraphExtension(pi: ExtensionApi): void {
       _onUpdate: ((data: unknown) => void) | undefined,
       ctx: ExtensionCtx | undefined,
     ) => {
-      try {
-        const projectRoot = ctx?.cwd ?? process.cwd();
-        const stats = await syncCodeGraph(projectRoot);
+      return toolResult(async () => {
+        const stats = await syncCodeGraph(ctx?.cwd ?? process.cwd());
         if (!stats) throw new Error('CodeGraph sync returned no statistics.');
         return {
-          isError: false,
-          content: [
-            {
-              type: 'text',
-              text: `CodeGraph synced: ${stats.nodeCount} nodes, ${stats.edgeCount} edges across ${stats.fileCount} files.`,
-            },
-          ],
+          text: `CodeGraph synced: ${stats.nodeCount} nodes, ${stats.edgeCount} edges across ${stats.fileCount} files.`,
           details: { stats },
         };
-      } catch (err) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `CodeGraph sync error: ${(err as Error).message}` }],
-          details: { error: (err as Error).message },
-        };
-      }
+      });
     },
   });
 
@@ -231,22 +169,18 @@ export default function codegraphExtension(pi: ExtensionApi): void {
 
       if (!trimmed || trimmed === 'status') {
         const status = await getCodeGraphStatus(projectRoot);
-        if (status.error) {
-          ctx?.ui?.notify?.(`CodeGraph error: ${status.error}`, 'warning');
-        } else if (status.isIndexing && !status.initialized) {
-          ctx?.ui?.notify?.('CodeGraph: the first index is still being built.', 'info');
-        } else if (status.initialized) {
-          const syncInfo = status.isWatching ? 'Auto-sync active' : 'Sync idle';
-          ctx?.ui?.notify?.(
-            `CodeGraph: ${status.nodeCount} symbols, ${status.edgeCount} edges, ${status.fileCount} files (${syncInfo}).`,
-            'info',
-          );
-        } else {
-          ctx?.ui?.notify?.(
-            'CodeGraph: Not initialized in this repository. Run `/codegraph sync` to index.',
-            'warning',
-          );
-        }
+        const sync = status.isWatching ? 'Auto-sync active' : 'Sync idle';
+        const line = status.error
+          ? [`CodeGraph error: ${status.error}`, 'warning']
+          : status.isIndexing && !status.initialized
+            ? ['CodeGraph: the first index is still being built.', 'info']
+            : status.initialized
+              ? [
+                  `CodeGraph: ${status.nodeCount} symbols, ${status.edgeCount} edges, ${status.fileCount} files (${sync}).`,
+                  'info',
+                ]
+              : ['CodeGraph: Not initialized in this repository. Run `/codegraph sync` to index.', 'warning'];
+        ctx?.ui?.notify?.(line[0], line[1]);
         return;
       }
 

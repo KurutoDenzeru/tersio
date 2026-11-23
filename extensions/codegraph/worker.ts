@@ -7,7 +7,6 @@ import {
   findRepoRoot,
   getCodeGraph,
   getCodeGraphStatus,
-  getComplexityScore,
   onToolFinished,
   stopAllWatchers,
   stopWatching,
@@ -67,7 +66,7 @@ function stopStatusTracking(root: string): void {
 
 type WorkerRequest =
   | { id: number; op: 'ensure' | 'status' | 'sync' | 'stop' | 'index'; root: string }
-  | { id: number; op: 'explore' | 'complexity'; root: string; query: string }
+  | { id: number; op: 'explore'; root: string; query: string }
   | { id: number; op: 'tool'; root: string; tool: string; isError: boolean; host: HostScope | null };
 
 function isHost(value: unknown): value is HostScope {
@@ -94,7 +93,6 @@ function parseRequest(value: unknown): WorkerRequest {
     case 'index':
       return { id: value.id, op: value.op, root: value.root };
     case 'explore':
-    case 'complexity':
       if (typeof value.query !== 'string' || value.query.length === 0) {
         throw new Error(`Request query is required for ${value.op}.`);
       }
@@ -134,8 +132,6 @@ async function execute(request: WorkerRequest): Promise<unknown> {
       return await syncCodeGraph(request.root);
     case 'explore':
       return await exploreSymbol(request.query, request.root);
-    case 'complexity':
-      return await getComplexityScore(request.query, request.root);
     case 'tool':
       onToolFinished(request.tool, request.isError, request.root, request.host);
       return null;

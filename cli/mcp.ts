@@ -33,6 +33,7 @@ import { hostCap } from '../extensions/shared/host-caps.ts';
 import { tersioMcpConfigured, tersioMcpHosts } from '../extensions/shared/mcp-config.ts';
 import { hostOfSessionFile } from '../extensions/shared/usage-ledger.ts';
 import { exploreSymbol, ensureCodeGraphBundle, getCodeGraphStatus, syncCodeGraph } from '../extensions/codegraph/client.ts';
+import { formatExplore } from '../extensions/codegraph/shared.ts';
 import { resolveCodeGraphLibrary } from '../extensions/codegraph/shared.ts';
 
 /** The spec version this server speaks; a client asking for an older one it knows gets that back. */
@@ -502,25 +503,7 @@ async function runCodegraphAction(action: string, args: CodegraphToolArgs): Prom
   }
 
   const result = await exploreSymbol(query, projectRoot);
-  if (result.symbols.length === 0) {
-    return {
-      content: [{ type: 'text', text: `CodeGraph: No symbols found matching "${query}".` }],
-    };
-  }
-
-  const lines = [`# CodeGraph Explore: "${query}"`, `Found ${result.symbols.length} symbol(s):`];
-  for (const s of result.symbols) {
-    lines.push(`\n## ${s.node.kind} ${s.node.qualifiedName ?? s.node.name} (${s.node.filePath}:${s.node.startLine})`);
-    if (s.node.signature) lines.push(`Signature: \`${s.node.signature}\``);
-    lines.push(`Blast radius: ${s.blastRadius.affectedNodes} nodes across ${s.blastRadius.affectedFiles} file(s)`);
-    if (s.callers.length > 0) {
-      lines.push(`Callers (${s.callers.length}):`);
-      for (const c of s.callers.slice(0, 5)) {
-        lines.push(`  - ${c.node.qualifiedName ?? c.node.name} in ${c.node.filePath}:${c.node.startLine}`);
-      }
-    }
-  }
-  return { content: [{ type: 'text', text: lines.join('\n') }] };
+  return { content: [{ type: 'text', text: formatExplore(result) }] };
 }
 
 async function callTool(

@@ -78,7 +78,6 @@ export const TREE_FILES: readonly string[] = [
   'combo/combo.ts',
   'commands/index.ts',
   'commands/commands.ts',
-  'codegraph/git-hooks.ts',
   'codegraph/codegraph.ts',
   'codegraph/client.ts',
   'codegraph/install.ts',

@@ -12,7 +12,7 @@ import type { CodeGraphStats, CodeGraphStatus, ExploreResult } from './types.ts'
 
 type Request =
   | { op: 'ensure' | 'status' | 'sync' | 'index' | 'stop'; root: string }
-  | { op: 'explore' | 'complexity'; root: string; query: string }
+  | { op: 'explore'; root: string; query: string }
   | { op: 'tool'; root: string; tool: string; isError: boolean; host: HostScope | null };
 
 interface Pending {
@@ -250,16 +250,6 @@ export const syncCodeGraph = (root = process.cwd()): Promise<CodeGraphStats | nu
 export const indexCodeGraph = (root = process.cwd()): Promise<CodeGraphStats> => request({ op: 'index', root });
 export const exploreSymbol = (query: string, root = process.cwd()): Promise<ExploreResult> =>
   request({ op: 'explore', root, query });
-export async function getComplexityScore(
-  query: string,
-  root = process.cwd(),
-): Promise<{ maxBlastRadius: number; affectedFiles: number }> {
-  try {
-    return await request({ op: 'complexity', root, query });
-  } catch {
-    return { maxBlastRadius: 0, affectedFiles: 0 };
-  }
-}
 
 export async function stopWatching(root = process.cwd()): Promise<void> {
   const project = findRepoRoot(root) ?? path.resolve(root);

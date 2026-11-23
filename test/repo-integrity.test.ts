@@ -71,7 +71,9 @@ function gitTsFiles(): string[] {
 
 test('no test spawns the CLI with process.env and an overridden HOME', () => {
   const offenders: string[] = [];
-  for (const file of gitTsFiles().filter((f) => f.startsWith('test/') && f !== 'test/setup.ts')) {
+  for (const file of gitTsFiles().filter(
+    (f) => f.startsWith('test/') && f !== 'test/setup.ts' && existsSync(path.join(root, f)),
+  )) {
     for (const [i, line] of readFileSync(path.join(root, file), 'utf8').split('\n').entries()) {
       if (!line.includes('...process.env')) continue;
       if (/\bHOME\b/.test(line) && !line.includes('cliEnv')) offenders.push(`${file}:${i + 1}`);
