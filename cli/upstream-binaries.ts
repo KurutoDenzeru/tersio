@@ -20,29 +20,27 @@ export interface BinarySourceSpec {
   source: string;
   api: string;
   repo: string;
-  bin: () => string | null;
+  /** Absent when the version is read from files instead of run, the way `--version` reports it. */
+  bin?: () => string | null;
   normalize: (value: string | undefined) => string;
   /** An absent binary is a gap (RTK) or the user's choice (Headroom). */
   gapWhenMissing: boolean;
+  /** The version without running a binary, for an add-on that lives as files (CodeGraph's bundle). */
+  localVersion?: () => string | null;
+  /** The latest version from a feed the GitHub release reader cannot parse, with the URL it was given. */
+  feed?: (api: string) => Promise<string | null>;
+  /** Where to read the installed version upstream; absent means GitHub's release page. */
+  link?: (version: string) => string;
 }
 
 export async function checkBinarySource(spec: BinarySourceSpec, ctx: BinarySourceCtx): Promise<SourceRow> {
-  const bin = spec.bin();
-  let local: string | null = null;
-  if (bin) {
-    try {
-      const shim = shimCommand(bin, ['--version']);
-      local =
-        spec.normalize(execFileSync(shim.cmd, shim.args, { encoding: 'utf8', timeout: 5000, windowsHide: true })) ||
-        null;
-    } catch {
-      local = null;
-    }
-  }
+  const local = spec.localVersion ? spec.localVersion() : binaryVersion(spec);
   let latest: string | null = null;
   let failure: Failure | null = null;
   try {
-    latest = spec.normalize((await ctx.fetchTag(spec.api)) ?? undefined);
+    latest = spec.feed
+      ? spec.normalize((await spec.feed(spec.api)) ?? undefined)
+      : spec.normalize((await ctx.fetchTag(spec.api)) ?? undefined);
   } catch (e) {
     failure = ctx.classifyFetch(e, `the ${spec.source} release feed`);
   }
@@ -60,7 +58,7 @@ export async function checkBinarySource(spec: BinarySourceSpec, ctx: BinarySourc
     measured: failure === null,
     status: failure ? failure.status : 'ok',
     kind: 'version',
-    link: local ? ctx.releaseUrl(spec.repo, local) : '',
+    link: local ? (spec.link ? spec.link(local) : ctx.releaseUrl(spec.repo, local)) : '',
     gaps: local === null && spec.gapWhenMissing ? ['the rtk binary is not on PATH'] : [],
     moved: [],
     appeared: [],
@@ -78,4 +76,18 @@ export async function checkBinarySource(spec: BinarySourceSpec, ctx: BinarySourc
           ? 'binary not on PATH'
           : '',
   };
+}
+
+/** The version one binary reports, or null when it is absent or will not say. */
+function binaryVersion(spec: BinarySourceSpec): string | null {
+  const bin = spec.bin?.();
+  if (!bin) return null;
+  try {
+    const shim = shimCommand(bin, ['--version']);
+    return (
+      spec.normalize(execFileSync(shim.cmd, shim.args, { encoding: 'utf8', timeout: 5000, windowsHide: true })) || null
+    );
+  } catch {
+    return null;
+  }
 }

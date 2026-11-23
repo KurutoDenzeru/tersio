@@ -28,6 +28,7 @@ import {
 } from './manifest.ts';
 import { textTable } from './common.ts';
 import { adaptCavemanFull } from '../extensions/shared/updater.ts';
+import { CODEGRAPH_NPM_LATEST, installedCodegraphVersion } from './codegraph-bundle.ts';
 import {
   RTK_RELEASE_API,
   RTK_REPO,
@@ -50,6 +51,8 @@ const GH = 'https://api.github.com';
 const UNPKG = 'https://unpkg.com';
 const RAW = 'https://raw.githubusercontent.com';
 const PONYTAIL_NPM = 'https://registry.npmjs.org/@dietrichgebert/ponytail/latest';
+/** CodeGraph's upstream lives on npm; the GitHub repo has no release feed Tersio can read. */
+const CODEGRAPH_REPO = 'colbymchenry/codegraph';
 
 /** The Ponytail files Tersio wrote itself: the TypeScript hooks and the fork manifest have no upstream byte to match. */
 const PONYTAIL_LOCAL_ONLY: readonly string[] = [
@@ -1004,6 +1007,23 @@ async function checkHeadroom(): Promise<SourceRow> {
   );
 }
 
+/** CodeGraph is a downloaded bundle, not a port: its version is the fact, npm's feed is the drift. */
+async function checkCodegraph(): Promise<SourceRow> {
+  return checkBinarySource(
+    {
+      source: 'CodeGraph',
+      api: CODEGRAPH_NPM_LATEST,
+      repo: CODEGRAPH_REPO,
+      localVersion: installedCodegraphVersion,
+      normalize: (value) => String(value || '').replace(/^v/i, '').trim(),
+      feed: async (api) => (await fetchJson<{ version?: string }>(api)).version ?? null,
+      link: (version) => `https://www.npmjs.com/package/@colbymchenry/codegraph/v/${version}`,
+      gapWhenMissing: false,
+    },
+    BINARY_CTX,
+  );
+}
+
 /** The extension entries an installed package manifest loads, or null when the host keeps none. A host can carry every file and still never load one, because the manifest is what names them. */
 async function loadedEntries(extensionsDir: string): Promise<string[] | null> {
   const pkg = parseJsonObject<{ omp?: { extensions?: unknown } }>(
@@ -1287,14 +1307,15 @@ async function rowOrFailure(label: string, probe: () => Promise<SourceRow>): Pro
 
 async function collect(): Promise<Scorecard> {
   const hosts = await checkHosts();
-  const [caveman, pstack, ponytail, rtk, headroom] = await Promise.all([
+  const [caveman, pstack, ponytail, rtk, headroom, codegraph] = await Promise.all([
     rowOrFailure('Caveman', checkCaveman),
     rowOrFailure('pstack', checkPstack),
     rowOrFailure('Ponytail', () => checkPonytail(hosts)),
     rowOrFailure('RTK', checkRtk),
     rowOrFailure('Headroom', checkHeadroom),
+    rowOrFailure('CodeGraph', checkCodegraph),
   ]);
-  const sources = [caveman, pstack, rtk, headroom, ponytail];
+  const sources = [caveman, pstack, rtk, headroom, ponytail, codegraph];
   const card: Scorecard = {
     version: PACKAGE_VERSION,
     checkedAt: Date.now(),

@@ -1669,7 +1669,7 @@ const UPDATE_SCHEDULES: ReadonlyArray<{ id: UpdateSchedule; label: string; hint:
   { id: "monthly", label: "Monthly", hint: "one a month" },
 ]
 
-/** Every mode is a port. The licences here are the upstream repos' own declarations. */
+/** The upstream projects Tersio wraps. The licences here are the upstream repos' own declarations. */
 const CREDITS: ReadonlyArray<{ label: string; hint: string; href: string; glyph: string }> = [
   {
     label: "Caveman",
@@ -1695,6 +1695,12 @@ const CREDITS: ReadonlyArray<{ label: string; hint: string; href: string; glyph:
     glyph: "🍃",
     hint: "headroomlabs-ai — the compression Tersio wraps",
     href: "https://github.com/headroomlabs-ai/headroom",
+  },
+  {
+    label: "CodeGraph",
+    glyph: "🕸️",
+    hint: "colbymchenry, MIT — the code index Tersio installs",
+    href: "https://github.com/colbymchenry/codegraph",
   },
   {
     label: "EcoLogits",
@@ -1851,7 +1857,7 @@ function AboutPane({ update }: { update: UpdateFeed }) {
         <div className="border-b border-line pb-4">
           <p className="m-0 text-[13px] font-semibold">Credits</p>
           <p className="mt-0.5 mb-0 text-xs text-dim">
-            Tersio is MIT licensed. Every mode is a port, and each keeps its author named.
+            Tersio is MIT licensed. Every add-on keeps its upstream project named.
           </p>
         </div>
         <div className="divide-y divide-line">

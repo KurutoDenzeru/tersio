@@ -96,6 +96,7 @@ const GLYPH: Record<string, string> = {
   Ponytail: "🧠",
   pstack: "🥔",
   Headroom: "🍃",
+  CodeGraph: "🕸️",
 }
 
 const AGENT_NAME: Record<string, string> = {
