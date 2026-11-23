@@ -30,7 +30,7 @@ function project(withMap: boolean): { repo: string; marker: string; dir: string;
   }
   const dir = path.join(home, 'bin');
   const marker = path.join(home, 'sync-probe');
-  fakeExecutable(dir, 'tersio', `pwd >> "$CODEGRAPH_PROBE"`);
+  fakeExecutable(dir, 'tersio', `pwd >> "$CODEGRAPH_PROBE"`, `cd >> "%CODEGRAPH_PROBE%"`);
   return { repo, marker, dir, home };
 }
 
