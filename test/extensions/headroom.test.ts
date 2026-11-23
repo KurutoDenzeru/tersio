@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -21,6 +21,12 @@ import { createServer } from 'node:http';
 process.env.HOME = fileURLToPath(new URL('../definitely-missing-home/headroom', import.meta.url));
 process.env.USERPROFILE = process.env.HOME;
 process.env.TERSIO_HOME = process.env.HOME;
+
+// A proxy the developer already runs would answer as the live one, and its flags would decide the route.
+vi.mock('../../extensions/shared/headroom-runtime.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../extensions/shared/headroom-runtime.ts')>()),
+  liveHeadroomUpstreams: () => null,
+}));
 
 type CommandHandler = (args: string, ctx: TestCtx) => Promise<void>;
 type EventHandler = (event: unknown, ctx: TestCtx | undefined) => Promise<unknown>;
