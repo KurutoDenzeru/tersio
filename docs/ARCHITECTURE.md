@@ -95,6 +95,7 @@ flowchart LR
 - **A session can install it in the background.** The first session that needs it fetches the package and builds the map without a prompt.
 - **Update and uninstall are yours to ask for.** `tersio update` compares the installed package with npm and installs a newer one. Uninstalling Tersio removes the Tersio files but leaves the downloaded package and your project maps in place.
 - **One switch per agent, one timer for all.** OMP, pi, PiG, and OpenCode get the map by default; Codex, Claude Code, and DeepSeek Harness reach it through Tersio's MCP server instead. The interval is shared: live watches files, the timers check on a clock, manual waits until you ask.
+- **Any harness can start it.** The MCP tool installs the missing package once on first use, so a machine with only Codex or Claude Code still gets the map. Codex keeps an existing map fresh at each prompt; Claude Code and DeepSeek Harness read what the extension hosts, the CLI, or the dashboard built, and sync on request.
 - **The dashboard touches only its own project.** Indexing and sync accept requests from this machine for the folder the dashboard runs in.
 - **Tersio adds no language rules of its own.** Which languages the map reads is the upstream package's job.
 
