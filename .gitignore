@@ -24,4 +24,7 @@ test/definitely-missing-home/.omp/logs/
 # Project-specific files
 website
 /.omp/
+
+# Editor and local tool state, never committed
 /.idea/
+/.codegraph/
