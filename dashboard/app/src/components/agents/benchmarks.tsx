@@ -49,6 +49,8 @@ interface Point {
 function cellNumber(cell: string | undefined): number | null {
   if (!cell) return null
   const text = cell.trim().toLowerCase()
+  // A published file starts as a template, so a blank placeholder is unknown, never a figure.
+  if (text.includes("_")) return null
   const share = text.match(/^(\d+)\s*\/\s*(\d+)$/)
   if (share) return (Number(share[1]) / Number(share[2])) * 100
   // A gate cell states its result in words, so it reads as a full pass or a full miss.
@@ -61,6 +63,17 @@ function cellNumber(cell: string | undefined): number | null {
     .replace(/,/g, "")
     .match(/-?\d*\.?\d+/)
   return match ? Number(match[0]) : null
+}
+
+/**
+ * True when a file is still the unfilled template. Base and Control rows carry structural zeros, so
+ * only the mode rows prove a run happened; when none of them has a figure, nothing was measured.
+ */
+function unmeasured(file: BenchFile): boolean {
+  const cells = file.tables.flatMap((table) =>
+    table.rows.filter((row) => !/^(base|control)/i.test(row[0])).flatMap((row) => row.slice(1)),
+  )
+  return cells.length > 0 && cells.every((cell) => cell.trim() === "" || cell.includes("_"))
 }
 
 /** The name behind a glyph: a title with a leading emoji reads as its plain name. */
@@ -78,7 +91,9 @@ function shortName(row: string): string {
   return row
     .replace(/\u0060/g, "")
     .replace(/\(off\)/gi, "")
+    .replace(/^Combo \+ Headroom \+ pstack \+ CodeGraph/i, "Stack")
     .replace(/^Combo \+ Headroom \+ pstack/i, "All")
+    .replace(/^Combo \+ CodeGraph/i, "CodeGraph")
     .replace(/^Combo \+ Headroom/i, "Headroom")
     .replace(/^Combo \+ pstack/i, "pstack")
     .trim()
@@ -494,7 +509,7 @@ export function BenchmarksPage() {
 
   /** Gate pass rate by mode family: one radar spoke per family, the mean of every gate it publishes. */
   const radar = useMemo(() => {
-    const families = ["Caveman", "Ponytail", "pstack", "RTK", "Headroom"]
+    const families = ["Caveman", "Ponytail", "pstack", "RTK", "Headroom", "CodeGraph"]
     const GATES = ["Quality", "Pass", "Fidelity", "Sentinel"]
     return families.map((family) => {
       const values: number[] = []
@@ -514,8 +529,8 @@ export function BenchmarksPage() {
       }
       const mean =
         values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : 0
-      return { source: family, pct: Math.round(mean) }
-    })
+      return { source: family, pct: Math.round(mean), measured: values.length > 0 }
+    }).filter((row) => row.measured)
   }, [files])
 
   const modes = files.filter((file) => !/^combo/i.test(plainTitle(file.title)))
@@ -689,7 +704,7 @@ export function BenchmarksPage() {
                   </figcaption>
                   <p className="mono mt-1 border-t border-line pt-2 text-[10px] leading-relaxed text-dim">
                     Reference: base scores 73% on prose and 87% on code. A family below base
-                    publishes no saving.
+                    publishes no saving. CodeGraph is scored on the agentic gate only.
                   </p>
                 </figure>
               </Card>
@@ -753,10 +768,12 @@ export function BenchmarksPage() {
                   key={file.id}
                   title={file.title.trim()}
                   description={
-                    (file.meta.Mode ?? file.meta.Stack ?? file.meta.Model ?? "") +
-                    " · " +
-                    file.tables.length +
-                    " tables"
+                    unmeasured(file)
+                      ? "Protocol published, no run recorded yet"
+                      : (file.meta.Mode ?? file.meta.Stack ?? file.meta.Model ?? "") +
+                        " · " +
+                        file.tables.length +
+                        " tables"
                   }
                   actions={
                     <span className="mono text-[10px] tabular-nums text-dim">
@@ -764,7 +781,13 @@ export function BenchmarksPage() {
                     </span>
                   }
                 >
-                  <Spread title={file.id} tables={file.tables} />
+                  {unmeasured(file) ? (
+                    <p className="mono m-0 text-[11px] leading-relaxed text-dim">
+                      Run the protocol and fill this file; until then the page claims no figure.
+                    </p>
+                  ) : (
+                    <Spread title={file.id} tables={file.tables} />
+                  )}
                 </Card>
               ))}
             </section>
@@ -781,9 +804,20 @@ export function BenchmarksPage() {
                   <Card
                     key={file.id}
                     title={file.title.trim()}
-                    description={file.meta.Stack ?? file.meta.Mode ?? ""}
+                    description={
+                      unmeasured(file)
+                        ? "Protocol published, no run recorded yet"
+                        : (file.meta.Stack ?? file.meta.Mode ?? "")
+                    }
                   >
-                    <Spread title={file.id} tables={file.tables} />
+                    {unmeasured(file) ? (
+                      <p className="mono m-0 text-[11px] leading-relaxed text-dim">
+                        The full-stack run has not been recorded; this file holds the shape it must
+                        take.
+                      </p>
+                    ) : (
+                      <Spread title={file.id} tables={file.tables} />
+                    )}
                   </Card>
                 ))}
               </section>

@@ -8,6 +8,7 @@ The method follows how the upstream projects test their own tools:
 - **Ponytail**: run the same tasks with and without the mode, five times each, and check quality with tests and injected bugs.
 - **RTK**: measure command output only. Check that failure details survive. Report percentages, not bill savings.
 - **Headroom**: measure the proxy JSONL before and after compression. Require a token drop and a surviving sentinel. A green switch is not evidence.
+- **CodeGraph**: measure the same agentic task with the map on and off, and report how many files the agent opened. A fresh index is part of the condition, so name its commit.
 
 ## Quick run
 
@@ -36,7 +37,8 @@ result file that skips a row is incomplete, so two people running this guide pro
 | pstack | `on` | Design and verification rules. Scored on quality only. |
 | RTK | `on` | Shorter shell command output. Measured by the bench, not by a session. |
 | Headroom | `on` | Compression proxy for tool output, logs, files, JSON, and history. Measured from proxy JSONL, not reply prompts. |
-| Combo | `lite`, `balanced`, `max` | Presets. `lite` is lite/lite, `balanced` is full/full, and `max` is ultra/ultra. RTK is on. pstack and Headroom stay where you set them. |
+| CodeGraph | `on` | A local code map: symbols, callers, and blast radius. It writes no prompt text, so it is measured on the agentic surface, not on reply tokens. |
+| Combo | `lite`, `balanced`, `max` | Presets. `lite` is lite/lite, `balanced` is full/full, and `max` is ultra/ultra. RTK is on. pstack, Headroom, and CodeGraph stay where you set them. |
 
 There are two ways to turn a mode on, and they are measured separately:
 
@@ -121,6 +123,14 @@ Check the state before you measure: the suite must report exactly one failure, a
 pass. Then commit both files, so every run starts from the same injected bug. Reset between runs
 with `git checkout -- .`.
 
+A CodeGraph case indexes that commit once before the first run:
+
+```bash
+cd /tmp/bench-fixture && tersio codegraph init
+```
+
+The same map serves every run of the condition, so a rebuild between runs changes the condition.
+
 Keep the copy out of your working repository. An agent that can see your project will read it, and
 on a code surface it will find functions that already exist and decline to write anything.
 
@@ -181,7 +191,7 @@ surfaces. The matrix below is the full scope.
 |---|---|---|---|
 | Prose | Caveman (6 levels), Control, Combo (3) | 3 prompts, each asking for a three-sentence explanation. | Reply tokens |
 | Code | Ponytail (3 levels) | 3 prompts, each asking for TypeScript functions. | Reply tokens |
-| Agentic | Combo (3), Combo stacks, pstack, RTK | Run the suite. Fix the failing test. Stop when it passes. | Total tokens, time, pass rate |
+| Agentic | Combo (3), Combo stacks, pstack, RTK, CodeGraph | Run the suite. Fix the failing test. Stop when it passes. | Total tokens, time, pass rate |
 | Command output | RTK | Run `bun run bench` over the committed fixtures. | Output bytes, time, fidelity |
 | Compression | Headroom | Send one fixed log and one fixed JSON payload through the proxy. | Tokens before, tokens after, transforms, sentinel survival |
 
@@ -233,6 +243,7 @@ A saving counts only when the output stays correct.
 - **Command output**: the failing test name, its assertion, its file, and its line remain, and the exit code matches.
 - **Headroom**: the proxy record shows `tokens_saved > 0`, a non-empty `transforms_applied`, and every required sentinel line or JSON key in the compressed messages. A configured switch with no proxy record is a failure.
 - **pstack**: score the agentic pass rate and the wrong turns. A green suite with a wrong turn is a failure.
+- **CodeGraph**: the suite passes, no test file was edited, and the index covered the files the run touched. A map that is stale or missing is a failed condition, not a small saving.
 
 Do not publish a saving for any mode whose pass rate is below base.
 
@@ -303,6 +314,7 @@ records whether any test file was edited, in the text under the table, because t
 | Base (`off`) | ___ | ___ | 0 | 0% | ___ | ___/5 |
 | RTK `on` | ___ | ___ | ___ | ___% | ___ | ___/5 |
 | pstack `on` | ___ | n/a | n/a | n/a | ___ | ___/5 |
+| CodeGraph `on` | ___ | ___ | ___ | ___% | ___ | ___/5 |
 | Combo `lite` | ___ | ___ | ___ | ___% | ___ | ___/5 |
 | Combo `balanced` | ___ | ___ | ___ | ___% | ___ | ___/5 |
 | Combo `max` | ___ | ___ | ___ | ___% | ___ | ___/5 |
@@ -461,11 +473,14 @@ Write one file per mode or stack. Do not create a single `BENCHMARK_<AGENT>.md`.
 | [BENCH_COMBO.md](./BENCH_COMBO.md) | Combo `lite`, `balanced`, `max` |
 | [BENCH_COMBO_HEADROOM.md](./BENCH_COMBO_HEADROOM.md) | Combo plus Headroom |
 | [BENCH_COMBO_PSTACK.md](./BENCH_COMBO_PSTACK.md) | Combo plus pstack |
-| [BENCH_COMBO_ALL.md](./BENCH_COMBO_ALL.md) | Combo plus Headroom plus pstack |
+| [BENCH_COMBO_ALL.md](./BENCH_COMBO_ALL.md) | 🧩 Combo plus 🍃 Headroom plus 🥔 pstack |
+| [BENCH_CODEGRAPH.md](./BENCH_CODEGRAPH.md) | 🕸️ CodeGraph index on the agentic surface |
+| [BENCH_STACK.md](./BENCH_STACK.md) | 🧩 Combo + 🍃 Headroom + 🥔 pstack + 🕸️ CodeGraph |
 
-`Combo` means the preset only: Caveman, RTK, and Ponytail. pstack is not part of it. Headroom is not
-part of it. The last three files add those layers explicitly. `BENCH_COMBO_ALL.md` is the final
-stack, with both Headroom and pstack.
+`Combo` means the preset only: Caveman, RTK, and Ponytail. pstack, Headroom, and CodeGraph are not
+part of it. The last four files add those layers explicitly: `BENCH_COMBO_ALL.md` is Combo with
+Headroom and pstack, `BENCH_CODEGRAPH.md` measures the map alone, and `BENCH_STACK.md` is every mode
+at once.
 
 Each file starts with the agent and model header. If one file holds more than one agent, repeat the
 header under its own second-level agent heading. Use one mode or stack per file.
@@ -475,7 +490,8 @@ header under its own second-level agent heading. Use one mode or stack per file.
 
 - Agent: <name and version>
 - Model: <provider/model>, thinking effort <level>, temperature <not reported by the harness>
-- Mode or stack: <the exact levels and whether Headroom or pstack is on>
+- Mode or stack: <the exact levels and whether Headroom, pstack, or CodeGraph is on>
+- CodeGraph index: <bundle version, sync mode, repository commit the map was built from>
 - Tersio, RTK, Ponytail, Caveman: <versions>
 - Caveman release <version> and pstack pin <commit>: the upstream bodies this run measured
 - Repository and commit: <repo> at <commit>. <where each surface ran>
@@ -492,8 +508,9 @@ Then include only the sections this mode or stack needs:
 - RTK: Command output and Agentic.
 - Headroom: Compression.
 - pstack: Agentic quality.
-- Combo, Combo + Headroom, Combo + pstack, Combo + everything: Prose, Agentic, and the matching
-  Headroom or pstack section.
+- CodeGraph: Agentic, plus the index line the header records.
+- Combo, Combo + Headroom, Combo + pstack, Combo + everything, and the full stack of all four:
+  Prose, Agentic, and the matching Headroom, pstack, or CodeGraph section.
 
 Keep every row, including levels that measured nothing useful, and keep the path column: a saved
 default and a slash command are different measurements.
@@ -506,6 +523,7 @@ Include with every result:
 - The model, the thinking level, and the temperature.
 - The Tersio, RTK, Ponytail, and Caveman versions.
 - The Caveman release and the pstack pin, so a reader knows which upstream bodies were measured.
+- The CodeGraph bundle version, its sync mode, and the commit its map was built from.
 - The test repository and commit.
 - The number of runs (N), the date, and the surface.
 - How the sessions were run: one for the whole benchmark with the context cleared between runs, or one per run.
