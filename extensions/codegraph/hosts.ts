@@ -1,5 +1,6 @@
-// OMP Native Adapter for CodeGraph.
-// Injects native tools directly into OmpApi without MCP process overhead.
+// Host adapter for CodeGraph: the tools, the /codegraph command, and the session hooks every
+// agent extension API gets. One adapter serves omp, pi, pig, and OpenCode; hosts with a plugin-only
+// surface (Codex, Claude Code, DeepSeek Harness) reach the same engine through tersio_codegraph.
 
 import {
   ensureInitializedAndWatching,
@@ -23,7 +24,7 @@ interface ZodFactory {
   string(): ZodChain;
 }
 
-/** OMP validates tool arguments with zod; pi and OpenCode take plain JSON Schema. A null query means no arguments. */
+/** Hosts that validate with zod get a schema; every other host takes plain JSON Schema. A null query means no arguments. */
 function parameters(pi: ExtensionApi, query: string | null): unknown {
   if (pi.zod) {
     const { z } = pi.zod as { z: ZodFactory };

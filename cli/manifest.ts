@@ -82,7 +82,7 @@ export const TREE_FILES: readonly string[] = [
   'codegraph/client.ts',
   'codegraph/install.ts',
   'codegraph/index.ts',
-  'codegraph/omp.ts',
+  'codegraph/hosts.ts',
   'codegraph/shared.ts',
   'codegraph/status-file.ts',
   'codegraph/types.ts',
@@ -152,6 +152,8 @@ const OBSOLETE_FILES = [
   'ponytail-bundle/hooks/ponytail-instructions.js',
   'codegraph/wordpress-resolver.ts',
   'codegraph/git-hooks.ts',
+  // The host adapter was named for one agent; the rename retires the old path on upgraded machines.
+  'codegraph/omp.ts',
   'routing/index.ts',
   'routing/omp.ts',
   'routing/stage-router.ts',

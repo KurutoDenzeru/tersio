@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, test, vi } from 'vitest';
-import codegraphExtension from '../../extensions/codegraph/omp.ts';
+import codegraphExtension from '../../extensions/codegraph/hosts.ts';
 import { ensureInitializedAndWatching } from '../../extensions/codegraph/client.ts';
 import type { ExtensionApi, ExtensionCtx } from '../../extensions/shared/types.ts';
 import { withHome } from '../helpers/env.ts';
