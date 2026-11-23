@@ -34,3 +34,20 @@ test('install cleanup removes retired routing files without removing neighboring
     expect(readFileSync(custom, 'utf8')).toBe('user extension');
   });
 });
+
+// codegraph hooks was removed with its implementation; an installed tree from an older build keeps the file
+// until the reaper names it, so the name has to be on the list or every upgraded machine carries dead code.
+test('install cleanup removes the retired codegraph git-hooks helper alone', async () => {
+  await withHome(async (home) => {
+    const dir = path.join(home, 'extensions', 'codegraph');
+    mkdirSync(dir, { recursive: true });
+    const retired = path.join(dir, 'git-hooks.ts');
+    writeFileSync(retired, 'retired helper');
+    const live = path.join(dir, 'shared.ts');
+    writeFileSync(live, 'live engine');
+    expect(isObsoleteTreeFile('codegraph/git-hooks.ts', 'omp')).toBe(true);
+    await reapObsoleteTreeDirs(path.dirname(dir), {});
+    expect(existsSync(retired)).toBe(false);
+    expect(readFileSync(live, 'utf8')).toBe('live engine');
+  });
+});

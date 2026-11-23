@@ -1479,6 +1479,11 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
   if (ownsTree) await capture('plugin entry', () => stepPluginEntry(extDir, installOptions));
   if (ownsTree) await capture('plugin manifest', () => syncPluginManifest(path.dirname(pluginExtDir), installOptions));
   if (ownsTree) await capture('retired agent copies', () => stepRetireAgentCopies(userExtDir, installOptions));
+  // Retired FILE names, not dirs: the plugin tree ships a live `shared/`, so only the obsolete list may sweep it.
+  if (ownsTree)
+    await capture('retired tree files', async () => {
+      await reapObsoleteTreeDirs(extDir, installOptions);
+    });
   if (selfPlugin) await capture('settings', () => writeHostSettings(headroomEnabled));
 
   if (quiet) {

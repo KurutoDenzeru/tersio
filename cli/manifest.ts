@@ -151,6 +151,7 @@ const OBSOLETE_FILES = [
   'ponytail-bundle/hooks/ponytail-config.js',
   'ponytail-bundle/hooks/ponytail-instructions.js',
   'codegraph/wordpress-resolver.ts',
+  'codegraph/git-hooks.ts',
   'routing/index.ts',
   'routing/omp.ts',
   'routing/stage-router.ts',
