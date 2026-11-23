@@ -82,6 +82,14 @@ flowchart LR
 
 CodeGraph is the code map Tersio installs. It reads your project once, remembers every name, who calls it, and what it depends on, and keeps that map current while you work. The agent then asks what a change touches instead of reading whole files.
 
+```mermaid
+flowchart LR
+  PKG["official package<br/>one download per machine"] --> HELPER["helper program<br/>watches and answers"]
+  FILES["your files"] -->|edits| HELPER
+  HELPER --> MAP["project map<br/>.codegraph/"]
+  ASK["agent · CLI · dashboard"] -->|what does this change touch?| HELPER
+```
+
 - **One download per machine, not per project.** Tersio fetches the official package for your computer, checks that it works, and keeps it under `~/.tersio/codegraph/bundles`. A copy you installed yourself stays where it is.
 - **The heavy work stays out of the agent.** A helper program owns the map and the file watching, so the agent's own runtime never carries the parsing code. When a session closes, its helper closes with it.
 - **A session can install it in the background.** The first session that needs it fetches the package and builds the map without a prompt.
