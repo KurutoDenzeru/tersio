@@ -69,9 +69,12 @@ function startWorker(): Worker {
   if (!node) throw new Error('CodeGraph requires Node.js 22.5 or later.');
   const sourceEntry = fileURLToPath(new URL('./worker.ts', import.meta.url));
   const entry = existsSync(sourceEntry) ? sourceEntry : fileURLToPath(new URL('./worker.js', import.meta.url));
+  // Node refuses to strip types under node_modules, so an installed .ts worker needs bun instead.
+  const tsRunner = entry.endsWith('.ts') && entry.includes(`${path.sep}node_modules${path.sep}`);
+  const bun = tsRunner ? resolveHostBinary(process.platform === 'win32' ? 'bun.exe' : 'bun') : null;
   const child = fork(entry, [], {
-    execPath: node,
-    execArgv: ['--liftoff-only'],
+    execPath: bun ?? node,
+    execArgv: bun ? [] : ['--liftoff-only'],
     env: { ...process.env, CODEGRAPH_LIB_PATH: lib },
     stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
     windowsHide: true,

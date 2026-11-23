@@ -3,7 +3,7 @@ import { copyFileSync, cpSync, existsSync, mkdirSync, symlinkSync, writeFileSync
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, expect, test } from 'vitest';
-import { cliEnv, withHome } from '../helpers/env.ts';
+import { cliEnv, hasBun, withHome } from '../helpers/env.ts';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../');
 const clientPath = path.join(projectRoot, 'dist/extensions/codegraph/client.js');
@@ -116,7 +116,7 @@ describe('CodeGraph client process bridge', () => {
             throw error;
           }
         `;
-        const result = await runNode(script, project, cliEnv(home, { CODEGRAPH_LIB_PATH: library }));
+        const result = await runScript(script, project, cliEnv(home, { CODEGRAPH_LIB_PATH: library }));
         expect(result.code, result.stderr).toBe(0);
         const output = JSON.parse(result.stdout) as {
           started: boolean;
@@ -149,17 +149,55 @@ describe('CodeGraph client process bridge', () => {
   );
 });
 
-function runNode(
+// The installed plugin ships only worker.ts, under node_modules, where Node refuses to strip types.
+test.skipIf(!hasBun())('an installed plugin under node_modules runs the TypeScript worker under bun', async () => {
+  await withHome(async (home) => {
+    const project = path.join(home, 'project');
+    const bundle = path.join(home, 'codegraph-bundle');
+    const library = path.join(bundle, 'lib', 'dist', 'index.js');
+    mkdirSync(path.join(project, '.git'), { recursive: true });
+    mkdirSync(path.dirname(library), { recursive: true });
+    writeFileSync(path.join(project, 'fixture.ts'), 'export function onlySymbol() {}\n');
+    writeFileSync(library, fakeCodeGraph);
+    const bundledNode = path.join(bundle, process.platform === 'win32' ? 'node.exe' : 'node');
+    if (process.platform === 'win32') copyFileSync(process.execPath, bundledNode);
+    else symlinkSync(process.execPath, bundledNode);
+
+    const extensions = path.join(home, 'node_modules', '@krtclcdy', 'tersio', 'extensions');
+    cpSync(path.join(projectRoot, 'extensions'), extensions, { recursive: true });
+
+    // Production loads the source client under bun, so the worker must not need Node's type stripping.
+    const entry = path.join(extensions, 'codegraph', 'client.ts');
+    writeFileSync(path.join(extensions, 'package.json'), '{"type":"module"}');
+    const script = `
+      import { ensureInitializedAndWatching, getCodeGraphStatus, shutdownCodeGraphWorker } from ${JSON.stringify(pathToFileURL(entry).href)};
+      const project = process.cwd();
+      try {
+        const started = await ensureInitializedAndWatching(project);
+        const status = await getCodeGraphStatus(project);
+        process.stdout.write(JSON.stringify({ started, status }));
+      } finally {
+        await shutdownCodeGraphWorker();
+      }
+    `;
+    const result = await runScript(script, project, cliEnv(home, { CODEGRAPH_LIB_PATH: library }), 'bun');
+    expect(result.code, result.stderr).toBe(0);
+    const output = JSON.parse(result.stdout) as { started: boolean; status: { initialized: boolean; nodeCount: number } };
+    expect(output.started).toBe(true);
+    expect(output.status).toMatchObject({ initialized: true, nodeCount: 1 });
+  });
+});
+
+function runScript(
   script: string,
   cwd: string,
   env: NodeJS.ProcessEnv,
+  runtime: 'node' | 'bun' = 'node',
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  const command = runtime === 'bun' ? 'bun' : process.execPath;
+  const argv = runtime === 'bun' ? ['-e', script] : ['--input-type=module', '-e', script];
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ['--input-type=module', '-e', script], {
-      cwd,
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    const child = spawn(command, argv, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     child.stdout.setEncoding('utf8').on('data', (chunk: string) => {
@@ -175,7 +213,7 @@ function runNode(
     });
     child.once('close', (code) => {
       clearTimeout(timeout);
-      if (code === null) reject(new Error(`Node child timed out or was terminated: ${stderr}`));
+      if (code === null) reject(new Error(`Child timed out or was terminated: ${stderr}`));
       else resolve({ code, stdout, stderr });
     });
   });
