@@ -4,6 +4,7 @@ import type {Column, SeriesSpec} from "@/components/charts"
 import {
     Card,
     CellBar,
+    DataTable,
     ErrorRateBadge,
     Legend,
     Page,
@@ -29,7 +30,7 @@ import {
     postCodeGraphSync,
     postHeadroomRuntime,
 } from "@/lib/data"
-import {fmt, fmtShort, PALETTE, pct, relAge, tsFull, tsLabel} from "@/lib/format"
+import {fmt, fmtShort, PALETTE, pct, providerColor, relAge, tsFull, tsLabel} from "@/lib/format"
 import {cn} from "cn"
 import {Spinner} from "@/components/ui/spinner"
 
@@ -676,7 +677,7 @@ export function ToolsPage({ agent, money }: { agent: AgentStats; money: (v: numb
       />
 
       <div className="flex flex-col gap-3">
-        <StatGrid cols={6}>
+        <StatGrid cols={5}>
           <Stat
             label="Tool calls"
             value={fmt(view.totals.calls)}
@@ -711,6 +712,9 @@ export function ToolsPage({ agent, money }: { agent: AgentStats; money: (v: numb
                 : "API-equivalent"
             }
           />
+        </StatGrid>
+        {/* The three savers side by side: bytes from rtk, tokens from Headroom, symbols from CodeGraph. */}
+        <StatGrid cols={3}>
           <Stat
             label="Saved by RTK"
             title="Bytes rtk kept out of context, from its own history"
@@ -738,6 +742,24 @@ export function ToolsPage({ agent, money }: { agent: AgentStats; money: (v: numb
                 : headroom.measured
                   ? `${pct(headroom.savingsPercent / 100, 1)} of ${fmtShort(headroom.tokensBefore)} across ${fmt(headroom.calls)} calls`
                   : "install Headroom and wrap a tool to record savings"
+            }
+          />
+          <Stat
+            label="Indexed by CodeGraph"
+            title="Symbols in the local code map, and the files they come from. The map is what saves the reads."
+            value={
+              cgLoading
+                ? "…"
+                : codeGraph?.initialized
+                  ? fmtShort(codeGraph.nodeCount)
+                  : "no index"
+            }
+            hint={
+              cgLoading
+                ? "reading index status"
+                : codeGraph?.initialized
+                  ? `${fmt(codeGraph.fileCount)} files · ${fmt(codeGraph.edgeCount)} edges`
+                  : "run `tersio codegraph init` in this project"
             }
           />
         </StatGrid>
@@ -982,18 +1004,27 @@ export function ToolsPage({ agent, money }: { agent: AgentStats; money: (v: numb
             Reading Headroom's ledger…
           </p>
         ) : headroom.measured ? (
-          <div className="mono flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line px-3.5 py-2 text-[11px] text-dim">
-            <span>
-              lifetime <span className="text-ink">{fmtShort(headroom.tokensSaved)}</span> of{" "}
-              {fmtShort(headroom.tokensBefore)} tokens ({pct(headroom.savingsPercent / 100, 1)})
-            </span>
-            <span>{fmt(headroom.calls)} calls</span>
-            <span>${headroom.costUsd.toFixed(4)} avoided</span>
-            {headroom.byClient.slice(0, 4).map((row) => (
-              <span key={row.client}>
-                {row.client}: {fmt(row.calls)} calls · {fmtShort(row.tokensSaved)} saved
-              </span>
-            ))}
+          <div className="flex flex-col">
+            {/* Window totals: the three numbers a reader compares, in one row. */}
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 border-t border-line px-3.5 py-3 sm:grid-cols-4">
+              {[
+                { label: "Today", value: fmtShort(headroom.todayTokens), hint: "tokens saved today" },
+                { label: "7 days", value: fmtShort(headroom.last7Tokens), hint: "tokens saved this week" },
+                { label: "30 days", value: fmtShort(headroom.last30Tokens), hint: "tokens saved this month" },
+                { label: "Lifetime", value: fmtShort(headroom.tokensSaved), hint: `${pct(headroom.savingsPercent / 100, 1)} of ${fmtShort(headroom.tokensBefore)} tokens` },
+              ].map((cell) => (
+                <div key={cell.label} className="min-w-0">
+                  <p className="mono m-0 text-[10px] uppercase tracking-[0.12em] text-dim">
+                    {cell.label}
+                  </p>
+                  <p className="m-0 mt-0.5 text-base font-semibold tabular-nums text-ink">
+                    {cell.value}
+                  </p>
+                  <p className="mono m-0 text-[10px] text-dim">{cell.hint}</p>
+                </div>
+              ))}
+            </div>
+            <HeadroomClientTable rows={headroom.byClient} calls={headroom.calls} cost={headroom.costUsd} />
           </div>
         ) : (
           <p className="p-4 text-xs text-dim">
@@ -1127,6 +1158,12 @@ export function ToolsPage({ agent, money }: { agent: AgentStats; money: (v: numb
           </Button>
         }
       >
+        {!cgLoading && codeGraph?.initialized ? (
+          <CodeGraphBreakdown
+            nodesByKind={codeGraph.nodesByKind}
+            filesByLanguage={codeGraph.filesByLanguage}
+          />
+        ) : null}
         {cgLoading ? (
           <p className="mono flex items-center gap-2 p-4 text-xs text-dim">
             <Spinner className="size-3.5" />
@@ -1193,6 +1230,159 @@ export function ToolsPage({ agent, money }: { agent: AgentStats; money: (v: numb
         ) : null}
       </Card>
     </Page>
+  )
+}
+
+
+/** One row per client that reached the proxy, folded the way the rtk table folds verbs. */
+function HeadroomClientTable({
+  rows,
+  calls,
+  cost,
+}: {
+  rows: Array<{ client: string; calls: number; tokensSaved: number }>
+  calls: number
+  cost: number
+}) {
+  const columns = useMemo<Array<Column<{ client: string; calls: number; tokensSaved: number }>>>(() => {
+    const maxSaved = Math.max(1, ...rows.map((row) => row.tokensSaved))
+    const maxCalls = Math.max(1, ...rows.map((row) => row.calls))
+    return [
+      {
+        key: "client",
+        header: "Client",
+        sort: (row) => row.client,
+        render: (row) => (
+          <span className="flex min-w-0 items-center gap-2">
+            <span
+              className="size-2 shrink-0 rounded-full"
+              style={{ background: providerColor(row.client) }}
+              aria-hidden="true"
+            />
+            <span className="mono truncate" title={row.client}>
+              {row.client}
+            </span>
+          </span>
+        ),
+      },
+      {
+        key: "calls",
+        header: "Calls",
+        align: "right",
+        sort: (row) => row.calls,
+        render: (row) => (
+          <span className="flex flex-col items-end gap-1">
+            <span className="tabular-nums">{fmt(row.calls)}</span>
+            <CellBar value={row.calls} max={maxCalls} color={providerColor(row.client)} />
+          </span>
+        ),
+      },
+      {
+        key: "saved",
+        header: "Saved",
+        title: "Tokens kept out of context by this client",
+        align: "right",
+        sort: (row) => row.tokensSaved,
+        render: (row) => (
+          <span className="flex flex-col items-end gap-1">
+            <span className="tabular-nums">{fmtShort(row.tokensSaved)}</span>
+            <CellBar value={row.tokensSaved} max={maxSaved} color={providerColor(row.client)} />
+          </span>
+        ),
+      },
+      {
+        key: "share",
+        header: "Share",
+        title: "This client's share of every saved token",
+        align: "right",
+        sort: (row) => row.tokensSaved,
+        render: (row) => (
+          <span className="tabular-nums text-dim">
+            {pct(row.tokensSaved / Math.max(1, rows.reduce((sum, r) => sum + r.tokensSaved, 0)), 0)}
+          </span>
+        ),
+      },
+    ]
+  }, [rows])
+
+  return (
+    <div className="border-t border-line">
+      <DataTable
+        columns={columns}
+        rows={rows}
+        rowKey={(row) => row.client}
+        initialSort={{ key: "saved", dir: "desc" }}
+        ariaLabel="Headroom savings by client"
+        empty={<p className="p-4 text-xs text-dim">No client has recorded savings yet.</p>}
+      />
+      <div className="mono flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line px-3.5 py-2 text-[11px] text-dim">
+        <span>
+          <span className="text-ink">{fmt(calls)}</span> calls through the proxy
+        </span>
+        <span className="ml-auto">
+          <span className="text-ink">${cost.toFixed(2)}</span> avoided at list price
+        </span>
+      </div>
+    </div>
+  )
+}
+
+
+/** The map's two breakdowns as one compact pair of bars: what it holds, and what it covers. */
+function CodeGraphBreakdown({
+  nodesByKind,
+  filesByLanguage,
+}: {
+  nodesByKind?: Record<string, number>
+  filesByLanguage?: Record<string, number>
+}) {
+  const kinds = Object.entries(nodesByKind ?? {})
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+  const languages = Object.entries(filesByLanguage ?? {})
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+  if (kinds.length === 0 && languages.length === 0) return null
+
+  const block = (
+    title: string,
+    rows: Array<[string, number]>,
+    unit: string,
+  ): React.ReactNode => {
+    const total = rows.reduce((sum, [, value]) => sum + value, 0)
+    const max = Math.max(1, ...rows.map(([, value]) => value))
+    return (
+      <figure className="m-0 min-w-0">
+        <figcaption className="mono mb-2 text-[10px] uppercase tracking-[0.12em] text-dim">
+          {title}
+        </figcaption>
+        <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+          {rows.map(([name, value]) => (
+            <li key={name} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+              <span className="flex min-w-0 flex-col gap-1">
+                <span className="mono truncate text-[11px] text-ink" title={name}>
+                  {name}
+                </span>
+                <CellBar value={value} max={max} color="var(--accent)" />
+              </span>
+              <span className="mono text-right text-[11px] tabular-nums text-dim">
+                {fmt(value)} {unit}
+                <span className="ml-1 text-[10px]">
+                  {pct(value / Math.max(1, total), 0)}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </figure>
+    )
+  }
+
+  return (
+    <div className="grid gap-4 border-t border-line px-3.5 py-3 sm:grid-cols-2">
+      {kinds.length > 0 ? block("Symbols by kind", kinds, "") : null}
+      {languages.length > 0 ? block("Files by language", languages, "") : null}
+    </div>
   )
 }
 

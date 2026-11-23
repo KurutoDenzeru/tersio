@@ -395,6 +395,10 @@ export interface CodeGraphStatusData {
   isIndexing: boolean
   lastUpdated?: number
   error?: string
+  /** Symbols by kind, when the engine reports the breakdown. */
+  nodesByKind?: Record<string, number>
+  /** Files by language, when the engine reports the breakdown. */
+  filesByLanguage?: Record<string, number>
   /** The session default is on; false means CodeGraph is off, so no index is kept or synced. */
   enabled?: boolean
   /** The configured sync: live, 5m, 15m, 1h or manual. */
