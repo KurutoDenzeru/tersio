@@ -80,13 +80,15 @@ flowchart LR
 
 ## CodeGraph
 
-`extensions/codegraph/` bridges the upstream `@colbymchenry/codegraph` bundle into OMP, pi, and OpenCode. PHP support comes from the upstream engine; Tersio adds no WordPress-specific resolver.
+CodeGraph is the code map Tersio installs. It reads your project once, remembers every name, who calls it, and what it depends on, and keeps that map current while you work. The agent then asks what a change touches instead of reading whole files.
 
-The platform bundle runs in a separate Node worker. The agent, CLI, and dashboard send local IPC requests to that worker, so OMP's bundled runtime does not need to resolve the upstream tree-sitter dependencies. A worker owns its process-local watchers and closes them when its host disconnects. Per-process status files under `~/.tersio/codegraph/status` let the dashboard report recently observed watchers across processes; stale reports expire after 20 seconds.
-
-The installer stages the official npm platform package under `~/.tersio/codegraph/bundles`, checks its SDK and a temporary index, then promotes it without replacing an existing bundle. A host-native installation performs the same setup in the background when a session first needs it. The dashboard restricts CodeGraph operations to its working-directory repository and accepts indexing or sync requests only from loopback clients.
-
-CodeGraph is on by default for supported hosts, with `codegraphDefault` scoped per agent. The shared `codegraphSync` setting selects `live`, `5m`, `15m`, `1h`, or `manual`; it defaults to `live`. Live mode uses the upstream file watcher, timed modes run an incremental sync per project, and manual mode syncs only on request.
+- **One download per machine, not per project.** Tersio fetches the official package for your computer, checks that it works, and keeps it under `~/.tersio/codegraph/bundles`. A copy you installed yourself stays where it is.
+- **The heavy work stays out of the agent.** A helper program owns the map and the file watching, so the agent's own runtime never carries the parsing code. When a session closes, its helper closes with it.
+- **A session can install it in the background.** The first session that needs it fetches the package and builds the map without a prompt.
+- **Update and uninstall are yours to ask for.** `tersio update` compares the installed package with npm and installs a newer one. Uninstalling Tersio removes the Tersio files but leaves the downloaded package and your project maps in place.
+- **One switch per agent, one timer for all.** OMP, pi, PiG, and OpenCode get the map by default; Codex, Claude Code, and DeepSeek Harness reach it through Tersio's MCP server instead. The interval is shared: live watches files, the timers check on a clock, manual waits until you ask.
+- **The dashboard touches only its own project.** Indexing and sync accept requests from this machine for the folder the dashboard runs in.
+- **Tersio adds no language rules of its own.** Which languages the map reads is the upstream package's job.
 
 ## Headroom
 

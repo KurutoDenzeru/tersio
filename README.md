@@ -143,7 +143,7 @@ That is all of it, with no port or token to set up. `tersio install` adds the sa
 
 For development, use an absolute Bun command with `args: ["/absolute/path/to/tersio/tersio.ts", "mcp"]`. A source checkout uses its own entry when creating an MCP registration, instead of another global installation. Existing server commands are preserved; restart the MCP server after changing one. This does not switch the installed agent extensions or an already running dashboard.
 
-Your agent then gets six tools:
+Your agent then gets seven tools:
 
 | Tool | What it answers |
 |---|---|
@@ -153,6 +153,7 @@ Your agent then gets six tools:
 | `tersio_sessions` | Recent sessions with model, tokens, and cost. |
 | `tersio_modes` | The starting modes, shown or changed, for every agent or one. |
 | `tersio_headroom` | Savings, live status, stored originals, and its own commands. |
+| `tersio_codegraph` | Symbol search, callers, and blast radius from the CodeGraph index. |
 
 Two resources answer without using a tool: `tersio://settings` and `tersio://hosts`.
 
