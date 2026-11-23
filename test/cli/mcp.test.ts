@@ -5,6 +5,7 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { handleMessage } from '../../cli/mcp.ts';
+import { withHome } from '../helpers/env.ts';
 
 // One collector stands in for the wire, so the tests assert what a client receives.
 function collector(): { sent: unknown[]; send: (msg: unknown) => void } {
@@ -130,6 +131,38 @@ describe('the MCP server protocol', () => {
       if (previous === undefined) delete process.env.TERSIO_HEADROOM_PROXY_URL;
       else process.env.TERSIO_HEADROOM_PROXY_URL = previous;
     }
+  });
+
+  test('tersio_codegraph names the missing install instead of dying, and keeps the bootstrap running', async () => {
+    // A sandboxed home has no bundle, and PI_OFFLINE=1 keeps the bootstrap from reaching npm.
+    await withHome(async () => {
+      const previousOffline = process.env.PI_OFFLINE;
+      process.env.PI_OFFLINE = '1';
+      try {
+        const { sent, send } = collector();
+        await handleMessage(
+          call(11, 'tools/call', { name: 'tersio_codegraph', arguments: { query: 'anything', action: 'explore' } }),
+          send,
+        );
+        const answer = sent[0] as { result: { isError?: boolean; content: Array<{ text: string }> } };
+        expect(answer.result.isError).toBe(true);
+        expect(answer.result.content[0].text).toContain('PI_OFFLINE=1');
+        expect(answer.result.content[0].text).toContain('call this tool again in a minute');
+      } finally {
+        if (previousOffline === undefined) delete process.env.PI_OFFLINE;
+        else process.env.PI_OFFLINE = previousOffline;
+      }
+    });
+  });
+
+  test('tersio_codegraph status answers without the bundle instead of installing', async () => {
+    await withHome(async () => {
+      const { sent, send } = collector();
+      await handleMessage(call(12, 'tools/call', { name: 'tersio_codegraph', arguments: { action: 'status' } }), send);
+      const answer = sent[0] as { result: { isError?: boolean; content: Array<{ text: string }> } };
+      expect(answer.result.isError).toBe(true);
+      expect(answer.result.content[0].text).toContain('bundle is not installed');
+    });
   });
 
   test('an unknown method answers with method-not-found, and ping answers empty', async () => {

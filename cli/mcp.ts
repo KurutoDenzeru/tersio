@@ -32,7 +32,8 @@ import type { HostId } from '../extensions/shared/host-caps.ts';
 import { hostCap } from '../extensions/shared/host-caps.ts';
 import { tersioMcpConfigured, tersioMcpHosts } from '../extensions/shared/mcp-config.ts';
 import { hostOfSessionFile } from '../extensions/shared/usage-ledger.ts';
-import { exploreSymbol, getCodeGraphStatus, syncCodeGraph } from '../extensions/codegraph/client.ts';
+import { exploreSymbol, ensureCodeGraphBundle, getCodeGraphStatus, syncCodeGraph } from '../extensions/codegraph/client.ts';
+import { resolveCodeGraphLibrary } from '../extensions/codegraph/shared.ts';
 
 /** The spec version this server speaks; a client asking for an older one it knows gets that back. */
 const PROTOCOL_VERSION = '2025-06-18';
@@ -410,6 +411,8 @@ type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: bo
 
 const CODEGRAPH_ACTIONS = ['explore', 'sync', 'status'];
 const CODEGRAPH_SYNC_TIMEOUT_MS = 120_000;
+/** A ~300MB download will not finish inside a tool call on every network, so a timeout only ends the wait, never the install. */
+const CODEGRAPH_BOOTSTRAP_TIMEOUT_MS = 120_000;
 
 /** A sync that never answers must not hold the MCP server's one request loop. */
 async function withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
@@ -440,6 +443,24 @@ async function codegraphTool(args: CodegraphToolArgs): Promise<ToolResult> {
 
 async function runCodegraphAction(action: string, args: CodegraphToolArgs): Promise<ToolResult> {
   const projectRoot = process.cwd();
+
+  // The MCP tool is the only CodeGraph surface on Codex, Claude Code, and DeepSeek Harness, and none
+  // of them runs a session hook, so a missing bundle installs here once and the retry answers.
+  if (action !== 'status' && !resolveCodeGraphLibrary()) {
+    try {
+      await withTimeout(ensureCodeGraphBundle(projectRoot), CODEGRAPH_BOOTSTRAP_TIMEOUT_MS, 'the CodeGraph install');
+    } catch (error) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: 'text',
+            text: `CodeGraph: ${(error as Error).message} The install keeps running in the background; call this tool again in a minute.`,
+          },
+        ],
+      };
+    }
+  }
 
   if (action === 'status') {
     const status = await getCodeGraphStatus(projectRoot);

@@ -125,10 +125,10 @@ function request<T>(payload: Request): Promise<T> {
   });
 }
 
-function bootstrapRuntime(root: string, report?: (message: string) => void): void {
+function bootstrapRuntime(root: string, report?: (message: string) => void): Bootstrap {
   if (bootstrap && !bootstrap.controller.signal.aborted) {
     if (!bootstrap.roots.has(root) || report) bootstrap.roots.set(root, report);
-    return;
+    return bootstrap;
   }
   const state: Bootstrap = { controller: new AbortController(), roots: new Map([[root, report]]) };
   bootstrap = state;
@@ -178,6 +178,27 @@ function bootstrapRuntime(root: string, report?: (message: string) => void): voi
       if (bootstrap === state) bootstrap = undefined;
     }
   })();
+  return state;
+}
+
+/**
+ * Await one bundle install, shared with every caller in this process. Resolves at once when the
+ * bundle is already present, so the MCP tool and any future caller can make a missing install
+ * their own problem instead of a dead end.
+ */
+export async function ensureCodeGraphBundle(
+  root = process.cwd(),
+  report?: (message: string) => void,
+): Promise<void> {
+  const project = findRepoRoot(root);
+  if (!project) throw new Error(`CodeGraph needs a git repository at or above ${root}; none found.`);
+  if (resolveCodeGraphLibrary()) return;
+  if (process.env.PI_OFFLINE === '1')
+    throw new Error('PI_OFFLINE=1, so the CodeGraph bundle could not be fetched.');
+  if ((bootstrapRetryAfter.get(project) ?? 0) > Date.now())
+    throw new Error('the last CodeGraph install attempt failed; try again in a minute.');
+  const state = bootstrapRuntime(project, report);
+  await (state.done ?? Promise.resolve());
 }
 
 export async function ensureInitializedAndWatching(
