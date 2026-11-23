@@ -1381,19 +1381,23 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
     else console.log(hint);
     closeRL();
   };
+  // The bundle is optional: a failed download leaves the extension installed and the session
+  // bootstraps it later, so it warns instead of failing a run the rest of which succeeded.
   if (supportsCodegraph(targetHost) && profile.codegraphDefault === 'on' && !resolveCodeGraphLibrary()) {
-    await capture('CodeGraph runtime', async () => {
-      if (dryRun) {
-        if (!quiet) sayTagged('  [dry-run] would install the CodeGraph runtime');
-        return;
+    if (dryRun) {
+      if (!quiet) sayTagged('  [dry-run] would install the CodeGraph runtime');
+    } else if (process.env.PI_OFFLINE === '1') {
+      if (!quiet) sayTagged('  [warn] CodeGraph runtime is unavailable while offline.');
+    } else {
+      try {
+        const version = await installCodeGraphBundle();
+        if (!quiet) console.log(`  CodeGraph runtime ${version} installed`);
+      } catch (error) {
+        // shortError keeps the whole stderr; a warning line names the first one and stops.
+        const reason = shortError(error).split('\n')[0] ?? '';
+        sayTagged(`  [warn] CodeGraph runtime not installed (${reason}); a session will retry it.`);
       }
-      if (process.env.PI_OFFLINE === '1') {
-        if (!quiet) sayTagged('  [warn] CodeGraph runtime is unavailable while offline.');
-        return;
-      }
-      const version = await installCodeGraphBundle();
-      if (!quiet) console.log(`  CodeGraph runtime ${version} installed`);
-    });
+    }
   }
 
   if (targetHost === 'codex') {

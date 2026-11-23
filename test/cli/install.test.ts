@@ -1890,7 +1890,8 @@ test.skipIf(!hasBun())(
       const install = spawnSync(process.execPath, [installer, 'install', '--host', 'pi', '--yes'], {
         cwd: root,
         encoding: 'utf8',
-        env: cliEnv(home),
+        // A load test must not wait on npm: the CodeGraph bundle is optional and downloads separately.
+        env: cliEnv(home, { ...DEAD_ENDPOINTS, PI_OFFLINE: '1' }),
         timeout: 120_000,
       });
       expect(install.status, install.stderr).toBe(0);
