@@ -8,7 +8,7 @@ import {cn} from "cn"
 import gsap from "gsap"
 import {useGSAP} from "@gsap/react"
 import {HeadroomDrawer, HostDrawer, ModeDrawer, RtkDrawer} from "./how-to-node-ui"
-import type {Alignment, Box, EdgeKey, GuideLine, HostAction, HostState, NodeId} from "./pipeline-model"
+import type {Alignment, Box, EdgeKey, GraphEndpoint, GraphEdge, GroupId, GuideLine, HostAction, HostState, NodeId} from "./pipeline-model"
 import {
     agentModeRows,
     alignDrag,
@@ -26,10 +26,12 @@ import {
     nodeState,
     nodeTitle,
     pipelineGraph,
+    framePorts,
     portPoint,
     savePositions,
     shortVersion,
     snapToGrid,
+    storedPositionsVersion,
     versionOf,
 } from "./pipeline-model"
 import type {ModeState} from "./shell"
@@ -78,7 +80,7 @@ function ClusterFrame({
         role="button"
         aria-label={`Move the ${label} group`}
         title={`Drag to move the ${label} group`}
-        className="mono pointer-events-auto absolute z-20 left-2 top-1.5 flex cursor-grab touch-none items-center gap-1 rounded-md border border-line bg-panel px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] text-dim active:cursor-grabbing"
+        className="mono pointer-events-auto absolute z-30 left-2 top-1.5 flex cursor-grab touch-none items-center gap-1 rounded-md border border-line bg-panel px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] text-dim active:cursor-grabbing"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -236,15 +238,7 @@ export function PipelineCanvas({
     let cancelled = false
     void fetchPipelinePositions().then((server) => {
       if (cancelled || !server) return
-      setStored((current) => {
-        const merged: Record<string, Box> = { ...current }
-        for (const [id, box] of Object.entries(server)) {
-          const candidate = box as Box
-          if (typeof candidate?.x === "number" && typeof candidate?.y === "number")
-            merged[id] = candidate
-        }
-        return merged
-      })
+      setStored((current) => ({ ...current, ...storedPositionsVersion(server) }))
     })
     return () => {
       cancelled = true
@@ -276,15 +270,21 @@ export function PipelineCanvas({
   const installed = useMemo(() => (installedKey ? installedKey.split(",") : []), [installedKey])
   const { nodes: nodeIds, edges } = useMemo(() => pipelineGraph(installed), [installed])
   const noAgents = installed.length === 0
-  // Two bands read as groups: the modes Tersio applies, and the harnesses they feed. Headroom rides outside.
+  // Two bands read as groups: the prompt modes, and the harnesses they feed. CodeGraph and headroom ride outside.
   const modeIds = useMemo(
     () =>
       nodeIds.filter(
-        (id) => id !== "prompt" && id !== "output" && id !== "headroom" && !id.startsWith("host-"),
+        (id) =>
+          id !== "prompt" && id !== "output" && id !== "headroom" && id !== "codegraph" && !id.startsWith("host-"),
       ),
     [nodeIds],
   )
   const hostIds = useMemo(() => nodeIds.filter((id) => id.startsWith("host-")), [nodeIds])
+  // The opt-in extras share a band of their own, so neither rides alone.
+  const optionalIds = useMemo(
+    () => nodeIds.filter((id) => id === "headroom" || id === "codegraph"),
+    [nodeIds],
+  )
 
   const boxes = useMemo(() => {
     const defaults = defaultPositions(installed)
@@ -310,6 +310,52 @@ export function PipelineCanvas({
     if (hostClash) for (const id of hostIds) merged[id] = defaults[id] ?? merged[id]
     return merged
   }, [nodeIds, stored, installed, hostIds])
+
+  // The frames connectors speak to: a group edge starts at the band's border, never at one member.
+  const frames = useMemo(() => {
+    const map: Partial<Record<GroupId, Box>> = {}
+    const modesFrame = clusterBox(modeIds, boxes)
+    if (modesFrame) map["group-modes"] = modesFrame
+    const optionalFrame = clusterBox(optionalIds, boxes)
+    if (optionalFrame) map["group-optional"] = optionalFrame
+    const hostsFrame = clusterBox(hostIds, boxes)
+    if (hostsFrame) map["group-hosts"] = hostsFrame
+    return map
+  }, [modeIds, optionalIds, hostIds, boxes])
+
+  const boxOf = (id: GraphEndpoint): Box | undefined =>
+    id === "group-modes"
+      ? frames["group-modes"]
+      : id === "group-optional"
+        ? frames["group-optional"]
+        : id === "group-hosts"
+          ? frames["group-hosts"]
+          : boxes[id]
+
+  // A line may graze no card and cross no frame. A band's own connector and the chain inside it are
+  // exempt from that band: the frame is their home, not an obstacle.
+  const obstacles = (edge: GraphEdge): Box[] => {
+    const skip = new Set<string>([edge.from, edge.to])
+    for (const [groupId, members] of [
+      ["group-modes", modeIds],
+      ["group-optional", optionalIds],
+      ["group-hosts", hostIds],
+    ] as const) {
+      const memberOf = (id: GraphEndpoint): boolean =>
+        id === groupId || members.some((member) => member === (id as NodeId))
+      if (memberOf(edge.from) || memberOf(edge.to)) {
+        skip.add(groupId)
+        for (const id of members) skip.add(id)
+      }
+    }
+    const rest = (Object.entries(boxes) as Array<[NodeId, Box]>).filter(([id]) => !skip.has(id)).map(([, b]) => b)
+    return [
+      ...rest,
+      ...Object.entries(frames)
+        .filter(([id]) => !skip.has(id))
+        .map(([, b]) => b),
+    ]
+  }
 
 
   // The add-agent node rides the canvas center when no agent exists yet, so the empty state reads as an invitation instead of an empty grid.
@@ -412,7 +458,7 @@ export function PipelineCanvas({
   // One writer for both stores: localStorage is the instant cache, the server copy is what survives a dashboard restart on a new port.
   const persist = (positions: Record<string, Box>): void => {
     savePositions(positions)
-    void postPipelinePositions(positions)
+    void postPipelinePositions({ layout: 2, boxes: positions })
   }
 
   const onNodePointerDown = (id: NodeId) => (event: React.PointerEvent<HTMLButtonElement>) => {
@@ -745,6 +791,14 @@ export function PipelineCanvas({
             onPointerUp={onGroupPointerUp}
           />
           <ClusterFrame
+            label="Optional Feedback"
+            ids={optionalIds}
+            boxes={boxes}
+            onPointerDown={onGroupPointerDown(optionalIds)}
+            onPointerMove={onGroupPointerMove}
+            onPointerUp={onGroupPointerUp}
+          />
+          <ClusterFrame
             label="AI Agent Harness"
             ids={hostIds}
             boxes={boxes}
@@ -761,14 +815,20 @@ export function PipelineCanvas({
           >
             <g fill="none" strokeLinejoin="round" strokeLinecap="round">
               {edges.map((edge) => {
-                const from = boxes[edge.from]
-                const to = boxes[edge.to]
+                const from = boxOf(edge.from)
+                const to = boxOf(edge.to)
                 if (!from || !to) return null
-                // The path bows around any node the straight run would cross.
-                const others = Object.entries(boxes)
-                  .filter(([id]) => id !== edge.from && id !== edge.to)
-                  .map(([, box]) => box)
-                const ports = edgePorts(from, to)
+                // A group edge starts at the band's border; the rest bow around every card and frame.
+                const others = obstacles(edge)
+                const ports =
+                  edge.from === "group-modes" ||
+                  edge.from === "group-optional" ||
+                  edge.from === "group-hosts" ||
+                  edge.to === "group-modes" ||
+                  edge.to === "group-optional" ||
+                  edge.to === "group-hosts"
+                    ? framePorts(from, to)
+                    : edgePorts(from, to)
                 const sp = portPoint(from, ports.from)
                 const tp = portPoint(to, ports.to)
                 const off = isOff(lit(edge.from as EdgeKey))
@@ -776,7 +836,7 @@ export function PipelineCanvas({
                 return (
                   <g key={`${edge.from}->${edge.to}`}>
                     <path
-                      d={edgePath(from, to, others)}
+                      d={edgePath(from, to, others, ports)}
                       className="howto-link"
                       stroke="var(--dim)"
                       strokeWidth={2.5}
@@ -784,7 +844,7 @@ export function PipelineCanvas({
                     />
                     {/* Every connector is a network cable; the moving dash runs only where the source is on. */}
                     <path
-                      d={edgePath(from, to, others)}
+                      d={edgePath(from, to, others, ports)}
                       className="flow-line howto-link"
                       stroke="var(--accent)"
                       strokeWidth={1.5}

@@ -18,7 +18,10 @@ export type EdgeKey =
   | "pstack"
   | "rtk"
   | "ponytail"
-  | "codegraph";
+  | "codegraph"
+  | "group-modes"
+  | "group-optional"
+  | "group-hosts";
 export type HostAction = "install" | "uninstall" | "update"
 
 /** `null` means this page has no answer yet: an exported file reads no settings, so it draws every node as lit. */
@@ -43,14 +46,22 @@ export type NodeId =
   | "ponytail"
   | "codegraph"
   | `host-${string}`;
+
+/** A dashed frame the canvas draws around member nodes; its edge starts at the frame, not a member. */
+export type GroupId = "group-modes" | "group-optional" | "group-hosts"
+export type GraphEndpoint = NodeId | GroupId
 export interface GraphEdge {
-  from: NodeId
-  to: NodeId
+  from: GraphEndpoint
+  to: GraphEndpoint
 }
+
+/** The nodes one frame wraps. The four prompt modes chain inside; headroom and codegraph share the optional band. */
+export const MODE_GROUP: readonly NodeId[] = ["caveman", "pstack", "rtk", "ponytail"]
+export const OPTIONAL_GROUP: readonly NodeId[] = ["headroom", "codegraph"]
 
 /** The injection order: each block appends to the prompt in this sequence. */
 export const CHAIN = ["caveman", "pstack", "rtk", "ponytail", "codegraph"] as const
-/** The turn order the chains read; each installed host hangs its agent node off the output. */
+/** The turn order: the prompt modes chain member to member, and each band hands its work to the output with one line. */
 export function pipelineGraph(installedHosts: ReadonlyArray<string>): {
   nodes: NodeId[]
   edges: GraphEdge[]
@@ -58,13 +69,15 @@ export function pipelineGraph(installedHosts: ReadonlyArray<string>): {
   const nodes: NodeId[] = ["prompt", ...CHAIN, "headroom", "output"]
   for (const host of installedHosts) nodes.push(`host-${host}` as NodeId)
   const edges: GraphEdge[] = [
-    { from: "prompt", to: "caveman" },
-    ...CHAIN.slice(0, -1).map((id, i) => ({ from: id, to: CHAIN[i + 1] as NodeId })),
-    { from: "codegraph", to: "output" },
-    { from: "prompt", to: "headroom" },
-    { from: "headroom", to: "output" },
+    { from: "prompt", to: "group-modes" },
+    { from: "caveman", to: "pstack" },
+    { from: "pstack", to: "rtk" },
+    { from: "rtk", to: "ponytail" },
+    { from: "group-modes", to: "output" },
+    { from: "group-optional", to: "output" },
   ]
-  for (const host of installedHosts) edges.push({ from: `host-${host}` as NodeId, to: "output" })
+  // One connector for the whole band, so ten agents still draw a single line into the output.
+  if (installedHosts.length > 0) edges.push({ from: "group-hosts", to: "output" })
   return { nodes, edges }
 }
 
@@ -95,6 +108,14 @@ export function edgePorts(s: Box, t: Box): { from: PortSide; to: PortSide } {
   const horizontal = hGap >= 24 && (vGap < 0 || hGap <= vGap)
   if (horizontal) return t.x >= s.x ? { from: "right", to: "left" } : { from: "left", to: "right" }
   return t.y >= s.y ? { from: "bottom", to: "top" } : { from: "top", to: "bottom" }
+}
+
+/** The ports a band edge uses: the frame faces the target by center direction, so a wide band never exits through its bottom when the target sits to its right. */
+export function framePorts(s: Box, t: Box): { from: PortSide; to: PortSide } {
+  const dx = t.x + t.w / 2 - (s.x + s.w / 2)
+  const dy = t.y + t.h / 2 - (s.y + s.h / 2)
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? { from: "right", to: "left" } : { from: "left", to: "right" }
+  return dy >= 0 ? { from: "bottom", to: "top" } : { from: "top", to: "bottom" }
 }
 
 const PORT_NORMAL: Record<PortSide, Point> = {
@@ -190,8 +211,13 @@ function curveClears(
 }
 
 
-export function edgePath(s: Box, t: Box, others: ReadonlyArray<Box>): string {
-  const ports = edgePorts(s, t)
+/** The connector between two boxes, bowed around everything in `others`; `ports` pins the sides a band edge has already chosen. */
+export function edgePath(
+  s: Box,
+  t: Box,
+  others: ReadonlyArray<Box>,
+  ports: { from: PortSide; to: PortSide } = edgePorts(s, t),
+): string {
   const sp = portPoint(s, ports.from)
   const tp = portPoint(t, ports.to)
   const dx = tp[0] - sp[0]
@@ -221,19 +247,20 @@ export function edgePath(s: Box, t: Box, others: ReadonlyArray<Box>): string {
   return `M${sp[0]} ${sp[1]} C${chosen.c1[0]} ${chosen.c1[1]}, ${chosen.c2[0]} ${chosen.c2[1]}, ${tp[0]} ${tp[1]}`
 }
 
-/** The default view: a mode block in the center, headroom above, output right, hosts below. */
+/** The default view: the mode band in the center, prompt left, CodeGraph beside it, headroom above, output right, hosts below. */
 export function defaultPositions(installedHosts: ReadonlyArray<string>): Record<string, Box> {
   const HOST_COLUMNS = 3
   const HOST_ROW_STEP = NODE_H + 80
   const positions: Record<string, Box> = {
-    prompt: { x: 40, y: 320, w: NODE_W, h: NODE_H },
+    prompt: { x: 40, y: 264, w: NODE_W, h: NODE_H },
     caveman: { x: 320, y: 320, w: NODE_W, h: NODE_H },
     pstack: { x: 320, y: 200, w: NODE_W, h: NODE_H },
     rtk: { x: 592, y: 200, w: NODE_W, h: NODE_H },
     ponytail: { x: 592, y: 320, w: NODE_W, h: NODE_H },
-    codegraph: { x: 864, y: 200, w: NODE_W, h: NODE_H },
-    headroom: { x: 592, y: 56, w: NODE_W, h: NODE_H },
-    output: { x: 1136, y: 320, w: NODE_W, h: NODE_H },
+    // The optional band sits above the feedback band: both are opt-in extras, so they share one frame.
+    headroom: { x: 320, y: 56, w: NODE_W, h: NODE_H },
+    codegraph: { x: 592, y: 56, w: NODE_W, h: NODE_H },
+    output: { x: 1136, y: 264, w: NODE_W, h: NODE_H },
   }
   // The agent band: the host card is taller because it lists its live modes, and a fourth host starts a new row under the first column.
   installedHosts.forEach((host, i) => {
@@ -247,29 +274,40 @@ export function defaultPositions(installedHosts: ReadonlyArray<string>): Record<
   return positions
 }
 
-const POSITIONS_KEY = "tersio.pipeline.positions.v1"
+const POSITIONS_KEY = "tersio.pipeline.positions"
+/** A layout saved before a grouping change fights the new frames, so the payload carries its own version. */
+const POSITIONS_LAYOUT = 2
 
-/** Node positions survive reloads; a corrupt or missing store falls back to the default layout. */
+/** A stored box worth keeping: every field a Box needs. */
+function isBox(value: unknown): value is Box {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Box).x === "number" &&
+    typeof (value as Box).y === "number" &&
+    typeof (value as Box).w === "number" &&
+    typeof (value as Box).h === "number"
+  )
+}
+
+/** Clean the boxes of a versioned payload, so a stale entry never pins a node. */
+function boxesOf(payload: Record<string, unknown>): Record<string, Box> | null {
+  if (payload.layout !== POSITIONS_LAYOUT) return null
+  const raw = payload.boxes
+  if (typeof raw !== "object" || raw === null) return null
+  const clean: Record<string, Box> = {}
+  for (const [id, box] of Object.entries(raw)) if (isBox(box)) clean[id] = box
+  return Object.keys(clean).length > 0 ? clean : null
+}
+
+/** Node positions survive reloads; a corrupt, older, or missing store falls back to the default layout. */
 export function loadPositions(): Record<string, Box> | null {
   try {
     const raw = localStorage.getItem(POSITIONS_KEY)
     if (!raw) return null
     const parsed: unknown = JSON.parse(raw)
     if (!parsed || typeof parsed !== "object") return null
-    const boxes = parsed as Record<string, unknown>
-    const clean: Record<string, Box> = {}
-    for (const [id, box] of Object.entries(boxes)) {
-      if (
-        box &&
-        typeof box === "object" &&
-        typeof (box as Box).x === "number" &&
-        typeof (box as Box).y === "number" &&
-        typeof (box as Box).w === "number" &&
-        typeof (box as Box).h === "number"
-      )
-        clean[id] = box as Box
-    }
-    return Object.keys(clean).length > 0 ? clean : null
+    return boxesOf(parsed as Record<string, unknown>)
   } catch {
     return null
   }
@@ -277,10 +315,16 @@ export function loadPositions(): Record<string, Box> | null {
 
 export function savePositions(positions: Record<string, Box>): void {
   try {
-    localStorage.setItem(POSITIONS_KEY, JSON.stringify(positions))
+    localStorage.setItem(POSITIONS_KEY, JSON.stringify({ layout: POSITIONS_LAYOUT, boxes: positions }))
   } catch {
     // Private mode: the layout just does not persist.
   }
+}
+
+/** The server copy of the same store: only a layout the client wrote back at this version merges. */
+export function storedPositionsVersion(server: Record<string, unknown> | null): Record<string, Box> {
+  if (!server) return {}
+  return boxesOf(server) ?? {}
 }
 
 /** `/health` reports `omp/18.12.6` and `codex-cli 0.167.0-alpha.3.2`, so the node keeps only the version. */
@@ -654,9 +698,17 @@ export const quickStartLast: {
 
 /** One definition of a node's live state, read by the canvas and the dialogs alike. */
 export function edgeLit(key: EdgeKey, modes: ModeState | null, hostState: HostState): Lit {
-  if (key === "hosts") {
+  if (key === "hosts" || key === "group-hosts") {
     const installed = Object.values(hostState.installed)
     return installed.length ? installed.some(Boolean) : null
+  }
+  if (key === "group-modes") {
+    if (!modes) return null
+    return MODE_GROUP.some((id) => !isOff(edgeLit(id as EdgeKey, modes, hostState)))
+  }
+  if (key === "group-optional") {
+    if (!modes) return null
+    return OPTIONAL_GROUP.some((id) => !isOff(edgeLit(id as EdgeKey, modes, hostState)))
   }
   if (key === "omp" || key === "pi" || key === "opencode") {
     const installed = hostState.installed[key]
