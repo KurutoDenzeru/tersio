@@ -543,6 +543,9 @@ export async function getCodeGraphStatus(projectRoot = process.cwd()): Promise<C
       fileCount: stats.fileCount,
       dbSizeBytes: stats.dbSizeBytes,
       lastUpdated: stats.lastUpdated,
+      // The stats already carry both breakdowns; the dashboard charts them, so they travel.
+      ...(stats.nodesByKind ? { nodesByKind: stats.nodesByKind } : {}),
+      ...(stats.filesByLanguage ? { filesByLanguage: stats.filesByLanguage } : {}),
       ...live,
     };
   } catch (err) {

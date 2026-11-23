@@ -69,6 +69,10 @@ export interface ExploreResult {
 }
 export interface CodeGraphStatus {
   initialized: boolean;
+  /** Symbols by their kind, so the dashboard can chart what the map holds. */
+  nodesByKind?: Record<string, number>;
+  /** Files by language: the other half of what the map covers. */
+  filesByLanguage?: Record<string, number>;
   nodeCount: number;
   edgeCount: number;
   fileCount: number;

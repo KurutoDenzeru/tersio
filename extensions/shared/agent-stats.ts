@@ -263,8 +263,11 @@ export async function readHeadroomReport(): Promise<AgentHeadroom> {
     const route = readHeadroomRoute(host);
     return { host, measured: route.measured, routed: route.routed, text: describeHeadroomRoute(route) };
   });
+  // A check about spend policy is advice, not routing health: it reads the same on a machine that
+  // works, so it would sit in the Tools page as a permanent warning nobody can clear.
+  const ADVISORY = new Set(['budget']);
   const failing = doctor.checks
-    .filter((check) => check.status === 'fail' || check.status === 'warn')
+    .filter((check) => (check.status === 'fail' || check.status === 'warn') && !ADVISORY.has(check.name))
     .map((check) => ({ name: check.name, status: check.status, summary: check.summary, hint: check.hint }));
   const proxy = doctor.checks.find((check) => check.name === 'proxy');
   return {
