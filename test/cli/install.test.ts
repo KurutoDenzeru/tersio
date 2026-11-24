@@ -198,8 +198,8 @@ test('installer accepts session-default flags and reports them', () => {
   const result = run('install', '--dry-run', '--yes', '--combo-default', 'lite');
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/Defaults: combo=lite/);
-  expect(result.stdout).toMatch(/Shared files — sync session bridge/);
-  expect(result.stdout).toMatch(/Tersio commands — install \/tersio root command/);
+  expect(result.stdout).toMatch(/Shared session bridge/);
+  expect(result.stdout).toMatch(/\/tersio command/);
 
   // A scripted flag written before the rename still lands on the lite preset.
   const retired = run('install', '--dry-run', '--yes', '--combo-default', 'medium');
@@ -235,9 +235,9 @@ test('installer rejects removed project/both scopes', () => {
 test('installer dry-run installs every user-scope extension', () => {
   const result = run('install', '--dry-run', '--yes');
   expect(result.status, result.stderr).toBe(0);
-  expect(result.stdout).toMatch(/Shared files — sync session bridge/);
-  expect(result.stdout).toMatch(/Caveman — install session mode and rule bodies/);
-  expect(result.stdout).toMatch(/Tersio commands — install \/tersio root command/);
+  expect(result.stdout).toMatch(/Shared session bridge/);
+  expect(result.stdout).toMatch(/Caveman — session mode and rule bodies/);
+  expect(result.stdout).toMatch(/\/tersio command/);
   expect(result.stdout).not.toMatch(/mode reinforcement/i);
 });
 
@@ -782,7 +782,7 @@ test('pi dry-run previews the local Ponytail package without writing', () => {
       timeout: 60000,
       env: offline(dir),
     });
-    expect(out).toMatch(/Ponytail — write the local pi package/);
+    expect(out).toMatch(/Ponytail — local pi package/);
     expect(readFileSync(path.join(dir, '.pi', 'agent', 'settings.json'), 'utf8')).toBe(before);
   } finally {
     rmTree(dir);

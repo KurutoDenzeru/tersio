@@ -1090,7 +1090,7 @@ test('an unknown command fails with usage and no installer output', () => {
   expect(result.stdout).not.toMatch(/Prerequisites:|Installing|Will remove:/);
 });
 
-test('dry-run previews shared bridge before dependent extensions without writing', () => {
+test('dry-run reports the add-ons in the canvas bands, without writing', () => {
   const missingHome = path.join(root, 'test', 'definitely-missing-home');
   const result = spawnSync(process.execPath, [installer, 'install', '--dry-run'], {
     encoding: 'utf8',
@@ -1099,12 +1099,13 @@ test('dry-run previews shared bridge before dependent extensions without writing
   });
 
   expect(result.status, result.stderr).toBe(0);
-  const shared = result.stdout.indexOf('Shared files — sync session bridge');
-  const caveman = result.stdout.indexOf('Caveman — install session mode and rule bodies');
-  expect(shared >= 0, result.stdout).toBeTruthy();
-  expect(caveman > shared, result.stdout).toBeTruthy();
+  // The report groups the steps the way the Quick Start canvas does, so each band names its members.
+  for (const band of ['AI Agent Harness', 'Default Feedback', 'Optional Feedback', 'Configuration'])
+    expect(result.stdout, band).toContain(band);
   expect(result.stdout).toMatch(/Ponytail — bundled in this plugin/);
-  expect(result.stdout).toMatch(/Tersio — register plugin/);
+  expect(result.stdout).toMatch(/Tersio — plugin registered/);
+  expect(result.stdout).toMatch(/Shared session bridge/);
+  expect(result.stdout).toMatch(/Caveman — session mode and rule bodies/);
   expect(result.stdout).not.toMatch(/\/tmp|\/Users|\.omp[\\/]agent[\\/]extensions\/shared\/session-state\.js/);
   expect(existsSync(path.join(root, 'extensions', 'shared-session-state.js'))).toBe(false);
 });
@@ -1119,8 +1120,8 @@ test('user dry-run installs commands without retired reinforcement', () => {
 
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/Ponytail — bundled in this plugin/);
-  expect(result.stdout).toMatch(/Combo — install preset switch/);
-  expect(result.stdout).toMatch(/Tersio — register plugin/);
+  expect(result.stdout).toMatch(/Combo — preset switch/);
+  expect(result.stdout).toMatch(/Tersio — plugin registered/);
   expect(result.stdout).not.toMatch(/mode reinforcement/i);
 });
 test('verbose dry-run reveals file paths hidden by default', () => {

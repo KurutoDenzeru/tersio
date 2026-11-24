@@ -136,9 +136,40 @@ import {
 } from '../extensions/shared/codex-plugin.ts';
 import { codexPackagedPluginDir } from '../extensions/shared/codex-state.ts';
 
+/** The install report's bands, named the way the Quick Start canvas names them. */
+type ReportBand = 'modes' | 'config' | 'optional' | 'harness';
+const BAND_TITLES: Record<ReportBand, string> = {
+  modes: 'Default Feedback',
+  config: 'Configuration',
+  optional: 'Optional Feedback',
+  harness: 'AI Agent Harness',
+};
+const BAND_ORDER: readonly ReportBand[] = ['harness', 'modes', 'optional', 'config'];
+
+/** Lines held back while a run reports, so the steps read in the canvas's bands instead of install order. */
+let collected: Array<{ band: ReportBand; line: string }> | null = null;
+
+function reportLine(band: ReportBand, line: string): void {
+  // A run that is not collecting (pi, pig, codex, claude, dsh) prints its lines at once, as before.
+  if (collected) collected.push({ band, line });
+  else console.log(line);
+}
+
+/** Group the held lines under their band titles: one heading per band that has members, in canvas order. */
+function flushReport(): void {
+  const lines = collected ?? [];
+  collected = null;
+  for (const band of BAND_ORDER) {
+    const members = lines.filter((entry) => entry.band === band);
+    if (members.length === 0) continue;
+    console.log(`  ${BAND_TITLES[band]}`);
+    for (const entry of members) console.log(`    ${entry.line}`);
+  }
+}
+
 async function stepPonytail(pluginsDir: string, options: InstallOptions): Promise<void> {
   // Ponytail rides inside this package now. An older install carried it as its own dependency, which a host then listed as a second plugin, so drop that entry and its sibling copy.
-  if (!options.quiet) console.log('  🧠 Ponytail — bundled in this plugin');
+  if (!options.quiet) reportLine('harness', '🧠 Ponytail — bundled in this plugin');
   const pkgPath = path.join(pluginsDir, 'package.json');
   const pkg = await readPluginsPackage(pkgPath);
   let migrated = false;
@@ -200,7 +231,7 @@ async function syncOmpPluginLock(pluginsDir: string, pkgName: string, version: s
 }
 
 async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Promise<boolean> {
-  if (!options.quiet) console.log('  🧩 Tersio — register plugin');
+  if (!options.quiet) reportLine('harness', '🧩 Tersio — plugin registered');
   const pkgPath = path.join(pluginsDir, 'package.json');
   const pkg = await readPluginsPackage(pkgPath);
   for (const legacy of ['oh-my-pi-token-saver', 'tersio-omp']) {
@@ -378,7 +409,7 @@ async function stepRtk(options: InstallOptions, target: HostId = 'omp'): Promise
   }
   const hostName = hostCap(target)?.label ?? target;
   // The path only under --verbose: a plain run stays free of real user paths.
-  if (!options.quiet) console.log(`  🗜️ RTK — bound to ${hostName}${verbose ? ` (${found})` : ''}`);
+  if (!options.quiet) reportLine('modes', `🗜️ RTK — bound to ${hostName}${verbose ? ` (${found})` : ''}`);
   await wireRtk(found, target, options);
 }
 
@@ -405,18 +436,18 @@ async function copySources(
 }
 
 async function stepSharedSessionState(extDir: string, options: WriteOptions): Promise<void> {
-  if (!options.quiet) console.log('  🔗 Shared files — sync session bridge');
+  if (!options.quiet) reportLine('config', '🔗 Shared session bridge');
   await copySources(extDir, filesUnder('shared'), 'shared/session-state.js', options);
 }
 
 async function stepRtkSession(extDir: string, options: WriteOptions): Promise<void> {
-  if (!options.quiet) if (verbose) console.log('  🗜️ RTK session — install session mode');
+  if (!options.quiet && verbose) reportLine('modes', '🗜️ RTK session — session mode');
   await copySources(extDir, filesUnder('rtk'), 'rtk/session.ts', options);
 }
 
 // pi's built-in grep and glob never reach the bash hook, so this one filters their output.
 async function stepRtkFilter(extDir: string, options: WriteOptions): Promise<void> {
-  if (!options.quiet) if (verbose) console.log('  🗜️ RTK filter — install built-in tool output filtering');
+  if (!options.quiet && verbose) reportLine('modes', '🗜️ RTK filter — tool output filtering');
   await copySources(extDir, filesUnder('rtk'), 'rtk/filter.ts', options);
 }
 
@@ -431,7 +462,7 @@ const CAVEMAN_RULES: readonly string[] = [
 ];
 
 async function stepCaveman(extDir: string, options: WriteOptions): Promise<void> {
-  if (!options.quiet) console.log('  🪨 Caveman — install session mode and rule bodies');
+  if (!options.quiet) reportLine('modes', '🪨 Caveman — session mode and rule bodies');
   const cavemanDir = path.join(extDir, 'caveman');
   if (!options.dryRun) await fs.mkdir(cavemanDir, { recursive: true });
 
@@ -457,7 +488,7 @@ async function stepCaveman(extDir: string, options: WriteOptions): Promise<void>
 }
 
 async function stepTersioCommands(extDir: string, options: WriteOptions): Promise<void> {
-  if (!options.quiet) console.log('  ⌨️ Tersio commands — install /tersio root command');
+  if (!options.quiet) reportLine('config', '⌨️ /tersio command');
   await copySources(extDir, filesUnder('commands'), 'commands/index.ts', options);
 }
 
@@ -472,24 +503,24 @@ async function stepTiming(extDir: string, options: WriteOptions): Promise<void> 
 }
 
 async function stepCombo(extDir: string, options: InstallOptions): Promise<void> {
-  if (!options.quiet) console.log('  🧩 Combo — install preset switch');
+  if (!options.quiet) reportLine('modes', '🧩 Combo — preset switch');
   await copySources(extDir, filesUnder('combo'), 'combo/index.ts', options);
 }
 
 // The body is a Tersio fork of an upstream skill, so the install copies it and never fetches it.
 async function stepPstack(extDir: string, options: InstallOptions): Promise<void> {
-  if (!options.quiet) console.log('  🥔 pstack — install the rigor mode');
+  if (!options.quiet) reportLine('modes', '🥔 pstack — the rigor mode');
   await copySources(extDir, filesUnder('pstack'), 'pstack/index.ts', options);
 }
 
 // The mode tracks the user's own Headroom install and never installs it: opt-in end to end.
 async function stepHeadroom(extDir: string, options: InstallOptions): Promise<void> {
-  if (!options.quiet) console.log('  🍃 Headroom — install the token-saver mode');
+  if (!options.quiet) reportLine('optional', '🍃 Headroom — the token-saver mode');
   await copySources(extDir, filesUnder('headroom'), 'headroom/index.ts', options);
 }
 
 async function stepCodegraph(extDir: string, options: InstallOptions): Promise<void> {
-  if (!options.quiet) console.log('  🕸️ CodeGraph — install knowledge graph extension');
+  if (!options.quiet) reportLine('optional', '🕸️ CodeGraph — knowledge graph extension');
   await copySources(extDir, filesUnder('codegraph'), 'codegraph/index.ts', options);
 }
 
@@ -769,7 +800,7 @@ async function stepOmpSkills(packageRoot: string, options: InstallOptions): Prom
     `${JSON.stringify({ ...before, skills: { ...skills, customDirectories: dirs } }, null, 2)}\n`,
     options,
   );
-  if (!options.quiet) sayTagged(`  🛠️ Skills — registered for /skill commands${verbose ? ` (${skillsDir})` : ''}`);
+  if (!options.quiet) reportLine('config', `🛠️ /skill commands registered${verbose ? ` (${skillsDir})` : ''}`);
 }
 
 /** The Headroom half of a run: refresh the binary on --apply-update, then wire a supported host when the mode is on. */
@@ -1020,7 +1051,7 @@ async function stepPigLayer(options: InstallOptions): Promise<void> {
 const PI_PONYTAIL_PACKAGE = `${JSON.stringify({ name: 'ponytail', version: '0.0.0', private: true, pi: { extensions: ['./pi-extension/index.ts'], skills: ['./skills'] } }, null, 2)}\n`;
 
 async function stepPonytailForPi(agentDir: string, options: InstallOptions, host: 'pi' | 'pig' = 'pi'): Promise<void> {
-  if (!options.quiet) console.log(`  🧠 Ponytail — write the local ${host} package`);
+  if (!options.quiet) reportLine('modes', `🧠 Ponytail — local ${host} package`);
   const root = PONYTAIL_DIR;
   const dest = path.join(agentDir, 'ponytail');
   if (!root) {
@@ -1505,6 +1536,8 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
     return;
   }
 
+  // From here the steps are reported as bands, the way the Quick Start canvas groups them.
+  collected = [];
   let selfPlugin = false;
   await capture('self-plugin', async () => {
     selfPlugin = await stepSelfPlugin(OMP_PLUGINS_DIR, installOptions);
@@ -1538,6 +1571,7 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
     await capture('retired tree files', async () => {
       await reapObsoleteTreeDirs(extDir, installOptions);
     });
+  if (!quiet) flushReport();
   if (selfPlugin) await capture('settings', () => writeHostSettings(headroomEnabled));
 
   if (quiet) {
