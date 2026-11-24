@@ -225,7 +225,7 @@ function modeSection(key: HostDefaultField, value: unknown): Record<string, unkn
 async function writePluginSettings(
   profile: Profile,
   options: WriteOptions,
-  opts: { keepSharedModes?: boolean } = {},
+  opts: { keepSharedModes?: boolean; report?: (line: string) => void } = {},
 ): Promise<void> {
   const file = tersioSettingsFile();
   const before = parseStored(await readTextIfExists(file));
@@ -277,7 +277,8 @@ async function writePluginSettings(
       'codegraphDefault',
     ].some((key) => before[key as keyof StoredSettings] !== values[key as keyof typeof values]);
   if (modesChanged) recordActivity('mode', 'Session defaults saved', formatProfile(profile));
-  if (!options.quiet) console.log('  ⚙️ Session defaults saved');
+  // A report that collects prints this line in its own band; otherwise it prints here.
+  if (!options.quiet) (opts.report ?? console.log)('⚙️ Session defaults saved');
   await mirrorPonytailDefault(profile.ponytailDefault, options);
 }
 

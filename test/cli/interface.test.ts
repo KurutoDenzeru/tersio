@@ -1100,7 +1100,7 @@ test('dry-run reports the add-ons in the canvas bands, without writing', () => {
 
   expect(result.status, result.stderr).toBe(0);
   // The report groups the steps the way the Quick Start canvas does, so each band names its members.
-  for (const band of ['AI Agent Harness', 'Default Feedback', 'Optional Feedback', 'Configuration'])
+  for (const band of ['Configuration', 'Default Feedback', 'Optional Feedback'])
     expect(result.stdout, band).toContain(band);
   expect(result.stdout).toMatch(/Ponytail — bundled in this plugin/);
   expect(result.stdout).toMatch(/Tersio — plugin registered/);
