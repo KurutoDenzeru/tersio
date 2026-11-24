@@ -71,13 +71,14 @@ test("shows CodeGraph as unavailable only for hosts without its extension", () =
     codegraphSync: "live",
   }
 
-  for (const host of ["codex", "dsh", "claude"]) {
+  // Codex loads no extension, but its edit-sync hook rides the flag, so the row reads the real value.
+  for (const host of ["dsh", "claude"]) {
     expect(agentModeRows(host, modes).find((row) => row.key === "codegraph")).toMatchObject({
       label: "n/a",
       on: false,
     })
   }
-  for (const host of ["omp", "pi", "pig", "opencode"]) {
+  for (const host of ["omp", "pi", "pig", "opencode", "codex"]) {
     expect(agentModeRows(host, modes).find((row) => row.key === "codegraph")).toMatchObject({
       label: "on",
       on: true,

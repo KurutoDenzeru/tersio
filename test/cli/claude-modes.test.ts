@@ -101,7 +101,7 @@ test('CodeGraph mode is limited to hosts that load its extension', async () => {
         hosts: { [host]: { codegraphDefault: 'off' } },
       });
     }
-    for (const host of ['dsh', 'codex', 'claude']) {
+    for (const host of ['dsh', 'claude']) {
       writeFileSync(settingsFile, '{}', 'utf8');
       errors.length = 0;
       process.exitCode = 0;
@@ -111,10 +111,14 @@ test('CodeGraph mode is limited to hosts that load its extension', async () => {
       expect(readFileSync(settingsFile, 'utf8')).toBe('{}');
     }
 
+    // Codex loads no extension, but its edit-sync hook rides the flag, so the mode reaches it.
+    writeFileSync(settingsFile, '{}', 'utf8');
     process.exitCode = 0;
-    await runModes(['codegraph', 'status', '--host', 'codex']);
-    expect(process.exitCode).toBe(1);
-    expect(errors.at(-1)).toBe('[fail] codegraph is not supported for codex');
+    await runModes(['codegraph', 'on', '--host', 'codex']);
+    expect(process.exitCode).toBe(0);
+    expect(JSON.parse(readFileSync(settingsFile, 'utf8'))).toMatchObject({
+      hosts: { codex: { codegraphDefault: 'on' } },
+    });
   } finally {
     console.log = oldLog;
     console.error = oldError;

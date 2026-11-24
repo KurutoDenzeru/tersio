@@ -83,7 +83,14 @@ test('dashboard saves CodeGraph defaults only for hosts that load its extension'
         expect(response.status).toBe(200);
         expect(await response.json()).toMatchObject({ ok: true, codegraphDefault: 'off' });
       }
-      for (const host of ['dsh', 'codex', 'claude']) {
+      // Codex loads no extension, but its edit-sync hook rides the flag, so the toggle reaches it.
+      const codexResponse = await fetch(`${url}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ host: 'codex', codegraphDefault: 'on' }),
+      });
+      expect(await codexResponse.json()).toMatchObject({ ok: true, codegraphDefault: 'on' });
+      for (const host of ['dsh', 'claude']) {
         const before = readFileSync(settingsFile, 'utf8');
         const response = await fetch(`${url}/settings`, {
           method: 'POST',

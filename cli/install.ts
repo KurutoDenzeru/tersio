@@ -85,7 +85,7 @@ import { headroomRouteUpstreams, routeHostOn } from '../extensions/shared/headro
 import type { HostDefaultField, Profile } from './profile.ts';
 import { formatCliStatus, saveHostDefaults, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
 import type { CodegraphSyncMode } from '../extensions/shared/plugin-settings.ts';
-import { supportsCodegraph } from '../extensions/shared/plugin-settings.ts';
+import { codegraphReachable, supportsCodegraph } from '../extensions/shared/plugin-settings.ts';
 import { readRtkDefault, tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import {
   EXT_DIR,
@@ -688,23 +688,24 @@ async function maybeInstallHeadroom(profile: Profile, quiet: boolean, host: Host
  * the answer rides the same host section the rest of the install writes.
  */
 async function maybeAskCodegraph(profile: Profile, quiet: boolean, host: HostId): Promise<boolean> {
-  if (!supportsCodegraph(host)) return false;
+  if (!codegraphReachable(host)) return false;
   if (!tty() || dryRun || applyUpdate || assumeYes) return false;
   const installed = resolveCodeGraphLibrary() !== null;
-  const answer = await askInteractiveChoice(
-    installed
-      ? '🕸️ CodeGraph — already installed. Keep it enabled for new sessions?'
-      : '🕸️ CodeGraph — optional code intelligence (symbol index, callers, blast radius). Enable it?',
-    [
-      {
-        value: 'on',
-        label: 'Yes (default)',
-        hint: installed ? 'stays enabled' : 'the bundle downloads into ~/.tersio/codegraph',
-      },
-      { value: 'off', label: 'No (optional)', hint: 'enable later: tersio modes codegraph on' },
-    ],
-    'on',
-  );
+  // Codex loads no CodeGraph extension; its prompt names the surfaces the flag actually reaches there.
+  const question =
+    host === 'codex'
+      ? '🕸️ CodeGraph — rides the Tersio MCP tool, and Codex\'s hook keeps an existing index fresh. Enable it?'
+      : installed
+        ? '🕸️ CodeGraph — already installed. Keep it enabled for new sessions?'
+        : '🕸️ CodeGraph — optional code intelligence (symbol index, callers, blast radius). Enable it?';
+  const answer = await askInteractiveChoice(question, [
+    {
+      value: 'on',
+      label: 'Yes (default)',
+      hint: installed || host === 'codex' ? 'stays enabled' : 'the bundle downloads into ~/.tersio/codegraph',
+    },
+    { value: 'off', label: 'No (optional)', hint: 'enable later: tersio modes codegraph on' },
+  ], 'on');
   if (answer.status !== 'selected' || answer.value !== 'off') return false;
   profile.codegraphDefault = 'off';
   if (!quiet) console.log('  CodeGraph — off for new sessions');

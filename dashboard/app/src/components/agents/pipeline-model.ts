@@ -358,8 +358,8 @@ export const HOSTS = [
   { id: "claude", label: "Claude Code" },
 ] as const
 
+/** Hosts with no CodeGraph surface at all: no extension, no edit hook, and the MCP tool cannot be host-gated. */
 export const NO_EXTENSION_HOSTS: Readonly<Record<string, true | undefined>> = {
-  codex: true,
   dsh: true,
   claude: true,
 }

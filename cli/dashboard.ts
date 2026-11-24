@@ -1,7 +1,7 @@
 import {
   CODEGRAPH_SYNC_MODES,
   type CodegraphSyncMode,
-  supportsCodegraph,
+  codegraphReachable,
   tersioSettingsFile,
 } from '../extensions/shared/plugin-settings.ts';
 // Dashboard server + usage APIs. Binds 127.0.0.1; --export writes a file. No Promise.withResolvers (Node 20.12).
@@ -800,7 +800,7 @@ function saveDefaults(
         ? (body.host as (typeof HOST_SCOPES)[number])
         : null;
     if (body.host !== undefined && hostScope === null) return { ok: false, error: 'unknown host scope' };
-    if (body.codegraphDefault !== undefined && hostScope && !supportsCodegraph(hostScope)) {
+    if (body.codegraphDefault !== undefined && hostScope && !codegraphReachable(hostScope)) {
       return { ok: false, error: `CodeGraph is not supported for ${hostScope}` };
     }
     const profile = await storedProfile(hostScope);

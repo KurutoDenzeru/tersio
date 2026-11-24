@@ -16,7 +16,7 @@ import type { HostId } from '../extensions/shared/host-caps.ts';
 import {
   CODEGRAPH_SYNC_MODES,
   type CodegraphSyncMode,
-  supportsCodegraph,
+  codegraphReachable,
 } from '../extensions/shared/plugin-settings.ts';
 
 type ModeName = 'combo' | 'caveman' | 'rtk' | 'ponytail' | 'pstack' | 'headroom' | 'codegraph' | 'codegraph-sync';
@@ -70,7 +70,7 @@ export async function runModes(argv: string[]): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  if (mode === 'codegraph' && host && !supportsCodegraph(host)) {
+  if (mode === 'codegraph' && host && !codegraphReachable(host)) {
     console.error(`[fail] codegraph is not supported for ${host}`);
     process.exitCode = 1;
     return;

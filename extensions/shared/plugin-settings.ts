@@ -269,3 +269,8 @@ export const CODEGRAPH_HOSTS = ['omp', 'pi', 'pig', 'opencode'] as const;
 export function supportsCodegraph(host: string): boolean {
   return (CODEGRAPH_HOSTS as readonly string[]).includes(host);
 }
+
+/** Codex loads no CodeGraph extension, but its edit-sync hook rides the same flag, so the mode reaches it too. */
+export function codegraphReachable(host: string): boolean {
+  return supportsCodegraph(host) || host === 'codex';
+}
