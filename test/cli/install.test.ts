@@ -198,7 +198,7 @@ test('installer accepts session-default flags and reports them', () => {
   const result = run('install', '--dry-run', '--yes', '--combo-default', 'lite');
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/Defaults: combo=lite/);
-  expect(result.stdout).toMatch(/RTK session — install session mode/);
+  expect(result.stdout).toMatch(/RTK — bound to|RTK — the Tersio plugin owns the rewrite/);
   expect(result.stdout).toMatch(/Tersio commands — install \/tersio root command/);
 
   // A scripted flag written before the rename still lands on the lite preset.
@@ -235,7 +235,7 @@ test('installer rejects removed project/both scopes', () => {
 test('installer dry-run installs every user-scope extension', () => {
   const result = run('install', '--dry-run', '--yes');
   expect(result.status, result.stderr).toBe(0);
-  expect(result.stdout).toMatch(/RTK session — install session mode/);
+  expect(result.stdout).toMatch(/RTK — bound to|RTK — the Tersio plugin owns the rewrite/);
   expect(result.stdout).toMatch(/Caveman — install session mode and rule bodies/);
   expect(result.stdout).toMatch(/Tersio commands — install \/tersio root command/);
   expect(result.stdout).not.toMatch(/mode reinforcement/i);
@@ -534,7 +534,7 @@ test('dry run reports the retired copies and removes nothing', () => {
     const before = readdirSync(agentExtDir(home)).toSorted();
     const result = runOmpInstall(home, {}, '--dry-run', '--yes', '--verbose');
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Add-ons load from: the OMP plugin manifest/);
+    expect(result.stdout).not.toMatch(/Add-ons load from/);
     expect(result.stdout).toMatch(/Retired agent copies — remove/);
     // The manifest decides what omp loads, so the install reports the manifest write it would make.
     expect(result.stdout).toMatch(/would write .*@krtclcdy[\\/]tersio[\\/]package\.json/);
@@ -620,7 +620,7 @@ test('without the plugin the agent tree is the fallback and keeps its copies', (
   try {
     const result = runOmpInstall(home, noPackageManagers(home), '--yes');
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Add-ons load from: the agent tree/);
+    expect(result.stdout).toMatch(/plugin registration failed — add-ons load from the agent tree/);
     for (const dir of RETIRED) {
       expect(existsSync(path.join(agentExtDir(home), dir)), `${dir} kept as the fallback`).toBe(true);
     }
@@ -856,7 +856,8 @@ test('opencode install registers one plugin and drops the rtk entry', () => {
       expect.stringMatching(/[\\/]opencode[\\/]plugins[\\/]tersio$/),
     ]);
     expect(existsSync(path.join(dir, '.config', 'opencode', 'plugins', 'rtk.ts'))).toBe(false);
-    expect(out).toMatch(/no separate entry/);
+    // The plugin owns the rewrite, so the line states the binding and nothing about a separate entry.
+    expect(out).toMatch(/RTK — bound to OpenCode/);
     expectTreeByteIdentical(path.join(dir, '.config', 'opencode', 'plugins', 'tersio'), treeFilesFor('opencode'));
   } finally {
     rmTree(dir);

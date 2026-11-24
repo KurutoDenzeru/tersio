@@ -277,7 +277,7 @@ async function writePluginSettings(
       'codegraphDefault',
     ].some((key) => before[key as keyof StoredSettings] !== values[key as keyof typeof values]);
   if (modesChanged) recordActivity('mode', 'Session defaults saved', formatProfile(profile));
-  if (!options.quiet) console.log(`  [write] Session defaults in ${file}`);
+  if (!options.quiet) console.log('  ⚙️ Session defaults saved');
   await mirrorPonytailDefault(profile.ponytailDefault, options);
 }
 
@@ -332,7 +332,8 @@ export async function saveHostDefaults(
   // Claude's RTK hook is a settings entry, not a mode body, so the stored toggle has to move it.
   if (host === 'claude' && fields.includes('rtkDefault')) setClaudeRtkHook(profile.rtkDefault);
   recordActivity('mode', `Session defaults for ${host} saved`, formatProfile(profile));
-  if (!options.quiet) console.log(`  [write] Session defaults for ${host} in ${file}`);
+  // The shared write already said the file was saved; this line only adds which agent got its own section.
+  if (!options.quiet && verbose) console.log(`  ⚙️ Session defaults saved for ${host}`);
 }
 
 function formatProfile(profile: Profile): string {

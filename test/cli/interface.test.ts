@@ -768,16 +768,16 @@ test('an existing rtk binary is bound on both hosts, never downloaded', () => {
     seedRtk(home);
     const pi = run(home, ['install', '--host', 'pi', '--yes']);
     expect(pi.status, pi.stderr).toBe(0);
-    expect(pi.stdout).toMatch(/RTK — binding into pi/i);
+    expect(pi.stdout).toMatch(/RTK — bound to pi/i);
 
     const omp = run(home, ['install', '--host', 'omp', '--dry-run', '--verbose']);
     expect(omp.status, omp.stderr).toBe(0);
-    expect(omp.stdout).toMatch(/RTK — binding into (OMP|Oh My Pi)/i);
+    expect(omp.stdout).toMatch(/RTK — bound to (OMP|Oh My Pi)/i);
     expect(omp.stdout).not.toMatch(/would download rtk binary/);
     expect(omp.stdout, 'the dry run names the docs, not a download').not.toMatch(/Downloading/);
     const oc = run(home, ['install', '--host', 'opencode', '--dry-run']);
     expect(oc.status, oc.stderr).toBe(0);
-    expect(oc.stdout).toMatch(/RTK — binding into OpenCode/);
+    expect(oc.stdout).toMatch(/RTK — bound to OpenCode/);
     for (const out of [pi.stdout, omp.stdout, oc.stdout]) {
       expect(out, 'no registry probe, no download').not.toMatch(/Downloading RTK binary|Finding latest RTK release/);
     }
@@ -1100,10 +1100,8 @@ test('dry-run previews shared bridge before dependent extensions without writing
 
   expect(result.status, result.stderr).toBe(0);
   const shared = result.stdout.indexOf('Shared files — sync session bridge');
-  const rtk = result.stdout.indexOf('RTK session — install session mode');
   const caveman = result.stdout.indexOf('Caveman — install session mode and rule bodies');
   expect(shared >= 0, result.stdout).toBeTruthy();
-  expect(rtk > shared, result.stdout).toBeTruthy();
   expect(caveman > shared, result.stdout).toBeTruthy();
   expect(result.stdout).toMatch(/Ponytail — bundled in this plugin/);
   expect(result.stdout).toMatch(/Tersio — register plugin/);
