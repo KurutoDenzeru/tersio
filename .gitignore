@@ -28,6 +28,7 @@ website
 # Editor and local tool state, never committed
 /.idea/
 /.codegraph/
+/.claude/
 
 # Generated graphify reports, ~136MB of local analysis output
 graphify-out/
