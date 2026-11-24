@@ -270,19 +270,24 @@ export function PipelineCanvas({
   const installed = useMemo(() => (installedKey ? installedKey.split(",") : []), [installedKey])
   const { nodes: nodeIds, edges } = useMemo(() => pipelineGraph(installed), [installed])
   const noAgents = installed.length === 0
-  // Two bands read as groups: the prompt modes, and the harnesses they feed. CodeGraph and headroom ride outside.
+  // Two bands read as groups: the always-on prompt modes, and the opt-in extras. The harnesses feed both.
   const modeIds = useMemo(
     () =>
       nodeIds.filter(
         (id) =>
-          id !== "prompt" && id !== "output" && id !== "headroom" && id !== "codegraph" && !id.startsWith("host-"),
+          id !== "prompt" &&
+          id !== "output" &&
+          id !== "pstack" &&
+          id !== "headroom" &&
+          id !== "codegraph" &&
+          !id.startsWith("host-"),
       ),
     [nodeIds],
   )
   const hostIds = useMemo(() => nodeIds.filter((id) => id.startsWith("host-")), [nodeIds])
-  // The opt-in extras share a band of their own, so neither rides alone.
+  // The opt-in extras share a band of their own: pstack needs a preset to turn on, like headroom and CodeGraph.
   const optionalIds = useMemo(
-    () => nodeIds.filter((id) => id === "headroom" || id === "codegraph"),
+    () => nodeIds.filter((id) => id === "pstack" || id === "headroom" || id === "codegraph"),
     [nodeIds],
   )
 

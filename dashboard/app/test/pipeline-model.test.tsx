@@ -20,8 +20,9 @@ describe("Quick start graph", () => {
     const positions = defaultPositions(["omp", "pi", "opencode"])
 
     expect(graph.edges).toContainEqual({ from: "prompt", to: "group-modes" })
-    expect(graph.edges).toContainEqual({ from: "caveman", to: "pstack" })
-    expect(graph.edges).toContainEqual({ from: "pstack", to: "rtk" })
+    // pstack is opt-in now, so it leaves the prompt chain and hands its work to the output with the extras.
+    expect(graph.edges).toContainEqual({ from: "caveman", to: "rtk" })
+    expect(graph.edges).not.toContainEqual({ from: "caveman", to: "pstack" })
     expect(graph.edges).toContainEqual({ from: "rtk", to: "ponytail" })
     expect(graph.edges).toContainEqual({ from: "group-modes", to: "output" })
     expect(graph.edges).toContainEqual({ from: "group-optional", to: "output" })
@@ -53,7 +54,7 @@ describe("Quick start graph", () => {
   test("stored layouts older than the bands fall back to the default", () => {
     expect(storedPositionsVersion({ layout: 1, boxes: { prompt: { x: 8, y: 8, w: 224, h: 72 } } })).toEqual({})
     expect(
-      storedPositionsVersion({ layout: 2, boxes: { prompt: { x: 8, y: 8, w: 224, h: 72 }, bad: "x" } }),
+      storedPositionsVersion({ layout: 3, boxes: { prompt: { x: 8, y: 8, w: 224, h: 72 }, bad: "x" } }),
     ).toEqual({ prompt: { x: 8, y: 8, w: 224, h: 72 } })
   })
 })
@@ -71,14 +72,15 @@ test("shows CodeGraph as unavailable only for hosts without its extension", () =
     codegraphSync: "live",
   }
 
-  // Codex loads no extension, but its edit-sync hook rides the flag, so the row reads the real value.
-  for (const host of ["dsh", "claude"]) {
+  // Codex reads the flag through its edit hook and DeepSeek Harness through the mounted MCP tool,
+  // so only Claude Code still has no surface at all to name.
+  for (const host of ["claude"]) {
     expect(agentModeRows(host, modes).find((row) => row.key === "codegraph")).toMatchObject({
       label: "n/a",
       on: false,
     })
   }
-  for (const host of ["omp", "pi", "pig", "opencode", "codex"]) {
+  for (const host of ["omp", "pi", "pig", "opencode", "codex", "dsh"]) {
     expect(agentModeRows(host, modes).find((row) => row.key === "codegraph")).toMatchObject({
       label: "on",
       on: true,

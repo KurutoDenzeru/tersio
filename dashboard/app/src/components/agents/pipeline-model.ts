@@ -55,23 +55,23 @@ export interface GraphEdge {
   to: GraphEndpoint
 }
 
-/** The nodes one frame wraps. The four prompt modes chain inside; headroom and codegraph share the optional band. */
-export const MODE_GROUP: readonly NodeId[] = ["caveman", "pstack", "rtk", "ponytail"]
-export const OPTIONAL_GROUP: readonly NodeId[] = ["headroom", "codegraph"]
+/** The nodes one frame wraps. The prompt modes chain inside; the opt-in extras share their own band. */
+export const MODE_GROUP: readonly NodeId[] = ["caveman", "rtk", "ponytail"]
+export const OPTIONAL_GROUP: readonly NodeId[] = ["pstack", "headroom", "codegraph"]
 
 /** The injection order: each block appends to the prompt in this sequence. */
-export const CHAIN = ["caveman", "pstack", "rtk", "ponytail", "codegraph"] as const
+export const CHAIN = ["caveman", "rtk", "ponytail"] as const
 /** The turn order: the prompt modes chain member to member, and each band hands its work to the output with one line. */
 export function pipelineGraph(installedHosts: ReadonlyArray<string>): {
   nodes: NodeId[]
   edges: GraphEdge[]
 } {
-  const nodes: NodeId[] = ["prompt", ...CHAIN, "headroom", "output"]
+  // The opt-in extras are nodes of their own: they hang off the band, not the prompt chain.
+  const nodes: NodeId[] = ["prompt", ...CHAIN, "pstack", "headroom", "codegraph", "output"]
   for (const host of installedHosts) nodes.push(`host-${host}` as NodeId)
   const edges: GraphEdge[] = [
     { from: "prompt", to: "group-modes" },
-    { from: "caveman", to: "pstack" },
-    { from: "pstack", to: "rtk" },
+    { from: "caveman", to: "rtk" },
     { from: "rtk", to: "ponytail" },
     { from: "group-modes", to: "output" },
     { from: "group-optional", to: "output" },
@@ -247,19 +247,20 @@ export function edgePath(
   return `M${sp[0]} ${sp[1]} C${chosen.c1[0]} ${chosen.c1[1]}, ${chosen.c2[0]} ${chosen.c2[1]}, ${tp[0]} ${tp[1]}`
 }
 
-/** The default view: the mode band in the center, prompt left, CodeGraph beside it, headroom above, output right, hosts below. */
+/** The default view: the prompt band in the center, prompt left, the opt-in extras above, output right, hosts below. */
 export function defaultPositions(installedHosts: ReadonlyArray<string>): Record<string, Box> {
   const HOST_COLUMNS = 3
   const HOST_ROW_STEP = NODE_H + 80
   const positions: Record<string, Box> = {
     prompt: { x: 40, y: 264, w: NODE_W, h: NODE_H },
-    caveman: { x: 320, y: 320, w: NODE_W, h: NODE_H },
-    pstack: { x: 320, y: 200, w: NODE_W, h: NODE_H },
-    rtk: { x: 592, y: 200, w: NODE_W, h: NODE_H },
-    ponytail: { x: 592, y: 320, w: NODE_W, h: NODE_H },
-    // The optional band sits above the feedback band: both are opt-in extras, so they share one frame.
-    headroom: { x: 320, y: 56, w: NODE_W, h: NODE_H },
-    codegraph: { x: 592, y: 56, w: NODE_W, h: NODE_H },
+    // Default Feedback: the three always-on prompt modes, one row.
+    caveman: { x: 320, y: 264, w: NODE_W, h: NODE_H },
+    rtk: { x: 592, y: 264, w: NODE_W, h: NODE_H },
+    ponytail: { x: 864, y: 264, w: NODE_W, h: NODE_H },
+    // Optional Feedback: the opt-in extras, one row above the feedback band.
+    pstack: { x: 320, y: 56, w: NODE_W, h: NODE_H },
+    headroom: { x: 592, y: 56, w: NODE_W, h: NODE_H },
+    codegraph: { x: 864, y: 56, w: NODE_W, h: NODE_H },
     output: { x: 1136, y: 264, w: NODE_W, h: NODE_H },
   }
   // The agent band: the host card is taller because it lists its live modes, and a fourth host starts a new row under the first column.
@@ -276,7 +277,7 @@ export function defaultPositions(installedHosts: ReadonlyArray<string>): Record<
 
 const POSITIONS_KEY = "tersio.pipeline.positions"
 /** A layout saved before a grouping change fights the new frames, so the payload carries its own version. */
-const POSITIONS_LAYOUT = 2
+const POSITIONS_LAYOUT = 3
 
 /** A stored box worth keeping: every field a Box needs. */
 function isBox(value: unknown): value is Box {
@@ -358,9 +359,11 @@ export const HOSTS = [
   { id: "claude", label: "Claude Code" },
 ] as const
 
-/** Hosts with no CodeGraph surface at all: no extension, no edit hook, and the MCP tool cannot be host-gated. */
+/**
+ * Hosts whose CodeGraph reach is the shared MCP tool only: no extension to load and no edit hook to gate.
+ * Codex left this list when its hook started reading the flag; DeepSeek Harness mounts the MCP tool too.
+ */
 export const NO_EXTENSION_HOSTS: Readonly<Record<string, true | undefined>> = {
-  dsh: true,
   claude: true,
 }
 
