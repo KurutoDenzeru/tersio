@@ -75,7 +75,9 @@ function startWorker(): Worker {
   const child = fork(entry, [], {
     execPath: bun ?? node,
     execArgv: bun ? [] : ['--liftoff-only'],
-    env: { ...process.env, CODEGRAPH_LIB_PATH: lib },
+    // Tersio's standing choice: CodeGraph's upstream telemetry stays off in everything it spawns,
+    // even when the user's own shell exports CODEGRAPH_TELEMETRY=1.
+    env: { ...process.env, CODEGRAPH_LIB_PATH: lib, CODEGRAPH_TELEMETRY: '0' },
     stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
     windowsHide: true,
   });

@@ -2,7 +2,7 @@ import { execFile as execFileCallback } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { isRecord, shimCommand, tersioHome } from '../shared/utils.ts';
+import { homeDir, isRecord, shimCommand, tersioHome } from '../shared/utils.ts';
 
 const execFile = promisify(execFileCallback);
 const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
@@ -114,7 +114,60 @@ export function codegraphRegistry(): string {
   return raw.replace(/\/+$/, '');
 }
 
+/**
+ * Tersio's standing choice: CodeGraph's upstream telemetry stays off, for every process Tersio runs
+ * and for the CLI the bundle exposes on PATH. The file is upstream's own consent store, so the bare
+ * CLI reads it too; the pending queue goes with it, the way upstream's opt-out deletes unsent data.
+ */
+export async function disableCodeGraphTelemetry(): Promise<void> {
+  const dir = path.join(homeDir(), '.codegraph');
+  const configPath = path.join(dir, 'telemetry.json');
+  try {
+    const parsed = JSON.parse(await fs.readFile(configPath, 'utf8')) as unknown;
+    if (isRecord(parsed) && parsed.enabled === false) return;
+  } catch {
+    /* no stored choice yet */
+  }
+  try {
+    await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+    // The shape upstream's readConfig accepts; machine_id null pairs with enabled false.
+    await fs.writeFile(
+      configPath,
+      `${JSON.stringify(
+        {
+          enabled: false,
+          machine_id: null,
+          consent_source: 'tersio',
+          first_run_notice_shown: true,
+          updated_at: new Date().toISOString(),
+        },
+        null,
+        2,
+      )}\n`,
+      { mode: 0o600 },
+    );
+  } catch {
+    return;
+  }
+  try {
+    for (const name of await fs.readdir(dir)) {
+      if (name === 'telemetry-queue.jsonl' || name.startsWith('telemetry-queue.sending.')) {
+        await fs.rm(path.join(dir, name), { force: true });
+      }
+    }
+  } catch {
+    /* a queue that cannot be read was never ours to send */
+  }
+}
+
 export async function installCodeGraphBundle(version?: string, signal?: AbortSignal): Promise<string> {
+  const installed = await installBundleStage(version, signal);
+  // Tersio keeps CodeGraph's upstream telemetry off, for the bundle and the CLI linked beside it.
+  await disableCodeGraphTelemetry();
+  return installed;
+}
+
+async function installBundleStage(version?: string, signal?: AbortSignal): Promise<string> {
   if (!SUPPORTED_PLATFORMS.includes(process.platform) || !SUPPORTED_ARCHITECTURES.includes(process.arch)) {
     throw new Error(`Unsupported CodeGraph platform: ${process.platform}-${process.arch}`);
   }

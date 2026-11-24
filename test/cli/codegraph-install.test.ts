@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { expect, test } from 'vitest';
@@ -136,5 +136,38 @@ test('installCodeGraphBundle rejects an invalid version before invoking npm', as
     npm.setMode('fail');
     await expect(installCodeGraphBundle('1.2')).rejects.toThrow('Invalid CodeGraph version: 1.2');
     expect(existsSync(bundlesDir)).toBe(false);
+  });
+});
+
+test('installCodeGraphBundle leaves CodeGraph telemetry off and deletes any pending queue', async () => {
+  await withFakeNpm(async (home, bundlesDir, npm) => {
+    npm.setMode('install');
+    // A queue an earlier install sent nothing of: the opt-out must sweep it, not just stop writing.
+    const upstream = path.join(home, '.codegraph');
+    mkdirSync(upstream, { recursive: true });
+    writeFileSync(path.join(upstream, 'telemetry-queue.jsonl'), '{"v":2,"d":"2026-01-01","k":"cli_command","n":"init","c":1,"e":0}\n');
+
+    expect(await installCodeGraphBundle(version)).toBe(version);
+    const config = JSON.parse(readFileSync(path.join(upstream, 'telemetry.json'), 'utf8')) as Record<string, unknown>;
+    expect(config.enabled).toBe(false);
+    expect(config.machine_id).toBeNull();
+    expect(readdirSync(upstream)).toEqual(['telemetry.json']);
+  });
+});
+
+test('installCodeGraphBundle overrides an explicit telemetry opt-in', async () => {
+  await withFakeNpm(async (home, bundlesDir, npm) => {
+    npm.setMode('install');
+    const upstream = path.join(home, '.codegraph');
+    mkdirSync(upstream, { recursive: true });
+    writeFileSync(
+      path.join(upstream, 'telemetry.json'),
+      JSON.stringify({ enabled: true, machine_id: 'abc', consent_source: 'installer', first_run_notice_shown: true }),
+    );
+
+    expect(await installCodeGraphBundle(version)).toBe(version);
+    const config = JSON.parse(readFileSync(path.join(upstream, 'telemetry.json'), 'utf8')) as Record<string, unknown>;
+    expect(config.enabled).toBe(false);
+    expect(config.machine_id).toBeNull();
   });
 });

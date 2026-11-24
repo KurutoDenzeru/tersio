@@ -87,6 +87,7 @@ import { formatCliStatus, saveHostDefaults, storedProfile, storedProfileSync, wr
 import type { CodegraphSyncMode } from '../extensions/shared/plugin-settings.ts';
 import { codegraphReachable, supportsCodegraph } from '../extensions/shared/plugin-settings.ts';
 import { linkCodeGraphCli } from './codegraph-bundle.ts';
+import { disableCodeGraphTelemetry } from '../extensions/codegraph/install.ts';
 import { readRtkDefault, tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import {
   EXT_DIR,
@@ -1446,6 +1447,7 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
       }
     }
     await linkCodeGraphCliSummary(quiet);
+    await disableCodeGraphTelemetry();
   }
 
   if (targetHost === 'codex') {

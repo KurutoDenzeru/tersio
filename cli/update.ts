@@ -37,7 +37,7 @@ import { patchState, readState, takeLegacy } from '../extensions/shared/state.ts
 import { refreshPrices } from '../extensions/shared/pricing.ts';
 import { parseHostArg } from './hosts.ts';
 import { CODEGRAPH_NPM_LATEST, installedCodegraphVersion, linkCodeGraphCli } from './codegraph-bundle.ts';
-import { installCodeGraphBundle } from '../extensions/codegraph/install.ts';
+import { installCodeGraphBundle, disableCodeGraphTelemetry } from '../extensions/codegraph/install.ts';
 import { readCodegraphDefault } from '../extensions/shared/plugin-settings.ts';
 import { CAVEMAN_PIN } from './upstream.ts';
 
@@ -406,6 +406,7 @@ async function runLatestUpdate(hostOverride?: string | string[] | null): Promise
     !process.env.CODEGRAPH_LIB_PATH &&
     (!graphCurrent || (graphVersion !== undefined && newerThan(graphVersion, graphCurrent)));
   const updateCodegraph = async (): Promise<void> => {
+    if (graphEnabled) await disableCodeGraphTelemetry();
     if (!graphUpdate) return;
     try {
       const installed = await installCodeGraphBundle(graphVersion);
