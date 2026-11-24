@@ -90,7 +90,7 @@ test('dashboard saves CodeGraph defaults only for hosts that load its extension'
         body: JSON.stringify({ host: 'codex', codegraphDefault: 'on' }),
       });
       expect(await codexResponse.json()).toMatchObject({ ok: true, codegraphDefault: 'on' });
-      for (const host of ['dsh', 'claude']) {
+      for (const host of ['claude']) {
         const before = readFileSync(settingsFile, 'utf8');
         const response = await fetch(`${url}/settings`, {
           method: 'POST',

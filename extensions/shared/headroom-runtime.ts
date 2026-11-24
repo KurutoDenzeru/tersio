@@ -618,9 +618,11 @@ export async function ensureHeadroomRuntime(
     // The saved deployment says nothing about what the running process forwards, so only its live argv counts.
     if (upstreamMismatches(upstreams, liveHeadroomUpstreams()).length === 0)
       return { ok: true, detail: 'headroom proxy already running' };
+    // The caller names no restart, so the message carries the one action that clears the refusal.
     return {
       ok: false,
-      detail: 'shared headroom proxy has different upstreams; the existing runtime was left running',
+      detail:
+        'the running Headroom forwards other upstreams, so this agent was left unrouted — restart it with: headroom proxy stop && tersio install',
     };
   }
   const startLockOwner = acquireStartLock();

@@ -72,7 +72,7 @@ export function readRetentionDays(): number {
 }
 
 /** Which agent a session runs on; the settings readers scope the per-host layer with it. */
-export type HostScope = 'omp' | 'pi' | 'pig' | 'opencode' | 'codex' | 'claude';
+export type HostScope = 'omp' | 'pi' | 'pig' | 'opencode' | 'dsh' | 'codex' | 'claude';
 
 /** The `hosts.<id>` section of the store, or nothing: the flat keys stay the shared fallback. */
 function hostDefaults(host?: HostScope | null): Record<string, unknown> {
@@ -270,7 +270,10 @@ export function supportsCodegraph(host: string): boolean {
   return (CODEGRAPH_HOSTS as readonly string[]).includes(host);
 }
 
-/** Codex loads no CodeGraph extension, but its edit-sync hook rides the same flag, so the mode reaches it too. */
+/**
+ * Codex loads no CodeGraph extension, but its edit-sync hook rides the same flag; DeepSeek Harness reaches
+ * the search through the Tersio MCP tool its bundle mounts. Both answer the mode, so both see the prompt.
+ */
 export function codegraphReachable(host: string): boolean {
-  return supportsCodegraph(host) || host === 'codex';
+  return supportsCodegraph(host) || host === 'codex' || host === 'dsh';
 }

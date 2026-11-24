@@ -101,7 +101,8 @@ test('CodeGraph mode is limited to hosts that load its extension', async () => {
         hosts: { [host]: { codegraphDefault: 'off' } },
       });
     }
-    for (const host of ['dsh', 'claude']) {
+    // Codex and DeepSeek Harness reach CodeGraph through the flag or the MCP tool; only Claude has no surface.
+    for (const host of ['claude']) {
       writeFileSync(settingsFile, '{}', 'utf8');
       errors.length = 0;
       process.exitCode = 0;

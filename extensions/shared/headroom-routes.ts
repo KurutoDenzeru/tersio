@@ -792,7 +792,9 @@ export function headroomRestartConflict(
 ): string | null {
   if (live === null) return null;
   const mismatched = upstreamMismatches(wanted, live);
-  const others = mismatched.length > 0 ? headroomRoutedHosts(host) : [];
+  // A gateway host names its upstream per request, so a proxy restart cannot strand it.
+  const others =
+    mismatched.length > 0 ? headroomRoutedHosts(host).filter((id) => hostCap(id)?.headroomGateway !== true) : [];
   if (others.length === 0) return null;
   return `${host}: the running Headroom forwards ${forwardsOf(live, mismatched)}; repointing it would break ${others.join(', ')}.`;
 }
