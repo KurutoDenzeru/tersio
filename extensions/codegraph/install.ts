@@ -160,6 +160,8 @@ export async function installCodeGraphBundle(version?: string, signal?: AbortSig
     }
     return installed;
   } finally {
-    await fs.rm(stage, { recursive: true, force: true });
+    // Windows keeps a spawned node.exe locked a beat after exit, so the smoke check's binary can still
+    // be held when the stage is swept; the retries ride out that window.
+    await fs.rm(stage, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }
