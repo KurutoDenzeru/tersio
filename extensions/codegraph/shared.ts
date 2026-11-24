@@ -172,8 +172,9 @@ export async function getCodeGraph(projectRoot = process.cwd(), autoInit = true)
  * Explore a symbol or query across the codebase.
  */
 export async function exploreSymbol(query: string, projectRoot = process.cwd()): Promise<ExploreResult> {
-  // Half an index answers with half the callers and a wrong blast radius; say so instead.
   const building = activeWatchers.get(requireRepoRoot(projectRoot));
+  // A build in progress means half an index: wait for the whole one rather than half the callers.
+  await waitFor(building?.settled, FIRST_INDEX_WAIT_MS);
   if (building?.status === 'indexing') {
     throw new Error('CodeGraph is still building its first index for this repository; try again shortly.');
   }
@@ -261,6 +262,8 @@ interface ActiveWatcher {
   cg?: UpstreamCodeGraph;
   error?: string;
   watching: boolean;
+  /** Resolves when the first build finishes, so a query can wait for a whole index instead of half of one. */
+  settled?: Promise<void>;
   syncTimer?: NodeJS.Timeout;
   syncPeriodMs?: number;
   syncing?: Promise<void>;
@@ -274,12 +277,28 @@ let cleanupRegistered = false;
 // Upstream FileWatcher debounce, and the pause that coalesces a burst of tool edits into one sync.
 const WATCH_DEBOUNCE_MS = 1500;
 const SYNC_DEBOUNCE_MS = 500;
+// How long a query waits on a first-time build before it hands the retry back to the caller.
+const FIRST_INDEX_WAIT_MS = 60_000;
 
 function closeQuietly(cg: UpstreamCodeGraph | undefined): void {
   try {
     cg?.close();
   } catch {
     /* best effort */
+  }
+}
+
+/** Wait for work to settle, but not past the limit: a huge first build hands the retry back instead. */
+async function waitFor(work: Promise<void> | undefined, ms: number): Promise<void> {
+  if (!work) return;
+  let timer: NodeJS.Timeout | undefined;
+  const limit = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, ms);
+  });
+  try {
+    await Promise.race([work, limit]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -330,7 +349,7 @@ export async function ensureInitializedAndWatching(projectRoot = process.cwd()):
     return entry.status !== 'failed';
   }
   // A first-time build can take minutes: it runs in the background, and status reports isIndexing.
-  void initializeWatcher(entry);
+  entry.settled = initializeWatcher(entry);
   return true;
 }
 

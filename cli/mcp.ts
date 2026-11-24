@@ -718,8 +718,8 @@ function mcpSend(msg: unknown): void {
 }
 
 /** Serves one client over stdio and exits when the client disconnects. */
-export async function runMcpServer(): Promise<void> {
-  const lines = createInterface({ input: process.stdin });
+export async function runMcpServer(input: NodeJS.ReadableStream = process.stdin): Promise<void> {
+  const lines = createInterface({ input });
   let queue: Promise<void> = Promise.resolve();
   lines.on('line', (line) => {
     const text = line.trim();
@@ -733,8 +733,8 @@ export async function runMcpServer(): Promise<void> {
     // A client may call tools in parallel, and the printing tools patch the console, so one handler at a time; an overlapping patch could leak a print onto the wire.
     if (message) queue = queue.then(() => handleMessage(message, mcpSend));
   });
-  // The server never outlives its client: a closed stream ends the process.
-  lines.on('close', () => process.exit(0));
+  // A closed stream ends the server, but the answers already queued are still owed to the client.
+  lines.on('close', () => void queue.then(() => process.exit(0)));
   const { promise } = Promise.withResolvers<void>();
   await promise;
 }
