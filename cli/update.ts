@@ -36,7 +36,7 @@ import {
 import { patchState, readState, takeLegacy } from '../extensions/shared/state.ts';
 import { refreshPrices } from '../extensions/shared/pricing.ts';
 import { parseHostArg } from './hosts.ts';
-import { CODEGRAPH_NPM_LATEST, installedCodegraphVersion } from './codegraph-bundle.ts';
+import { CODEGRAPH_NPM_LATEST, installedCodegraphVersion, linkCodeGraphCli } from './codegraph-bundle.ts';
 import { installCodeGraphBundle } from '../extensions/codegraph/install.ts';
 import { readCodegraphDefault } from '../extensions/shared/plugin-settings.ts';
 import { CAVEMAN_PIN } from './upstream.ts';
@@ -410,6 +410,8 @@ async function runLatestUpdate(hostOverride?: string | string[] | null): Promise
     try {
       const installed = await installCodeGraphBundle(graphVersion);
       console.log(`CodeGraph runtime ${installed} installed`);
+      // A new bundle means a new bin path, so the ~/.local/bin link follows it.
+      await linkCodeGraphCli();
     } catch (error) {
       console.error(`[fail] CodeGraph runtime: ${(error as Error).message}`);
       process.exitCode = 1;

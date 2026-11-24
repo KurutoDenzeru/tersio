@@ -86,6 +86,7 @@ import type { HostDefaultField, Profile } from './profile.ts';
 import { formatCliStatus, saveHostDefaults, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
 import type { CodegraphSyncMode } from '../extensions/shared/plugin-settings.ts';
 import { codegraphReachable, supportsCodegraph } from '../extensions/shared/plugin-settings.ts';
+import { linkCodeGraphCli } from './codegraph-bundle.ts';
 import { readRtkDefault, tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import {
   EXT_DIR,
@@ -1239,6 +1240,17 @@ async function stepClaude(options: InstallOptions): Promise<void> {
   if (!options.quiet) console.log('  Claude Code — the combo strip draws above the prompt, and /tersio prints it');
 }
 
+/** Link the bundled upstream CLI into ~/.local/bin and say what happened, once the bundle is in place. */
+async function linkCodeGraphCliSummary(quiet: boolean): Promise<void> {
+  const link = await linkCodeGraphCli();
+  if (quiet || link !== 'linked') return;
+  const dir = path.join(homeDir(), '.local', 'bin');
+  console.log(`  CodeGraph CLI linked at ${dir}/codegraph (the full upstream CLI: codegraph --help)`);
+  if (!(process.env.PATH ?? '').split(path.delimiter).includes(dir)) {
+    sayTagged(`  [note] ${dir} is not on PATH yet — add it to use the bare codegraph command`);
+  }
+}
+
 async function runInstall(forcedHost?: HostId): Promise<void> {
   let hostChosen = false;
   if (command === null && tty() && !yes && !updatePromptDone) {
@@ -1416,21 +1428,24 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
   };
   // The bundle is optional: a failed download leaves the extension installed and the session
   // bootstraps it later, so it warns instead of failing a run the rest of which succeeded.
-  if (supportsCodegraph(targetHost) && profile.codegraphDefault === 'on' && !resolveCodeGraphLibrary()) {
-    if (dryRun) {
-      if (!quiet) sayTagged('  [dry-run] would install the CodeGraph runtime');
-    } else if (process.env.PI_OFFLINE === '1') {
-      if (!quiet) sayTagged('  [warn] CodeGraph runtime is unavailable while offline.');
-    } else {
-      try {
-        const version = await installCodeGraphBundle();
-        if (!quiet) console.log(`  CodeGraph runtime ${version} installed`);
-      } catch (error) {
-        // shortError keeps the whole stderr; a warning line names the first one and stops.
-        const reason = shortError(error).split('\n')[0] ?? '';
-        sayTagged(`  [warn] CodeGraph runtime not installed (${reason}); a session will retry it.`);
+  if (supportsCodegraph(targetHost) && profile.codegraphDefault === 'on') {
+    if (!resolveCodeGraphLibrary()) {
+      if (dryRun) {
+        if (!quiet) sayTagged('  [dry-run] would install the CodeGraph runtime');
+      } else if (process.env.PI_OFFLINE === '1') {
+        if (!quiet) sayTagged('  [warn] CodeGraph runtime is unavailable while offline.');
+      } else {
+        try {
+          const version = await installCodeGraphBundle();
+          if (!quiet) console.log(`  CodeGraph runtime ${version} installed`);
+        } catch (error) {
+          // shortError keeps the whole stderr; a warning line names the first one and stops.
+          const reason = shortError(error).split('\n')[0] ?? '';
+          sayTagged(`  [warn] CodeGraph runtime not installed (${reason}); a session will retry it.`);
+        }
       }
     }
+    await linkCodeGraphCliSummary(quiet);
   }
 
   if (targetHost === 'codex') {
