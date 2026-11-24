@@ -683,6 +683,35 @@ async function maybeInstallHeadroom(profile: Profile, quiet: boolean, host: Host
 }
 
 /**
+ * The optional CodeGraph prompt, asked once per interactive install right after Headroom's. CodeGraph
+ * is on by default, so Yes (the highlighted answer) changes nothing and No opts the target host out:
+ * the answer rides the same host section the rest of the install writes.
+ */
+async function maybeAskCodegraph(profile: Profile, quiet: boolean, host: HostId): Promise<boolean> {
+  if (!supportsCodegraph(host)) return false;
+  if (!tty() || dryRun || applyUpdate || assumeYes) return false;
+  const installed = resolveCodeGraphLibrary() !== null;
+  const answer = await askInteractiveChoice(
+    installed
+      ? '🕸️ CodeGraph — already installed. Keep it enabled for new sessions?'
+      : '🕸️ CodeGraph — optional code intelligence (symbol index, callers, blast radius). Enable it?',
+    [
+      {
+        value: 'on',
+        label: 'Yes (default)',
+        hint: installed ? 'stays enabled' : 'the bundle downloads into ~/.tersio/codegraph',
+      },
+      { value: 'off', label: 'No (optional)', hint: 'enable later: tersio modes codegraph on' },
+    ],
+    'on',
+  );
+  if (answer.status !== 'selected' || answer.value !== 'off') return false;
+  profile.codegraphDefault = 'off';
+  if (!quiet) console.log('  CodeGraph — off for new sessions');
+  return true;
+}
+
+/**
  * The MCP entry lives in the agent's own config file, not in this plugin tree, so the install asks
  * before writing it. A cancelled prompt stops the run, like every other prompt here.
  */
@@ -1284,6 +1313,9 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
     if (!chosenFields.includes('headroomDefault')) chosenFields.push('headroomDefault');
   }
   await lifecycleHeadroom(targetHost, headroomEnabled, profile, quiet);
+  // The optional CodeGraph prompt rides the same slot: Yes keeps the default, No opts the target out.
+  const codegraphChosen = await maybeAskCodegraph(profile, quiet, targetHost);
+  if (codegraphChosen && !chosenFields.includes('codegraphDefault')) chosenFields.push('codegraphDefault');
   // Asked here, written with the other config below, so the question lands before the final confirm.
   const mcpWanted = await maybeInstallMcp(targetHost, quiet);
 
@@ -1367,7 +1399,7 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
   };
   const writeHostSettings = async (headroomOn: boolean, saveDefaults = true): Promise<void> => {
     await writePluginSettings(profile, installOptions, { keepSharedModes: hostExplicit });
-    if (saveDefaults && hostExplicit && (choseDefaults || headroomEnabled)) {
+    if (saveDefaults && hostExplicit && (choseDefaults || headroomEnabled || codegraphChosen)) {
       await saveHostDefaults(
         targetHost,
         chosenFields,
