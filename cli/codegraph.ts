@@ -63,5 +63,7 @@ export async function runCodegraph(args: string[]): Promise<void> {
     return;
   }
 
+  console.error(`Unknown codegraph command: ${sub}`);
   console.log('Usage: tersio codegraph <status|init|sync|explore <symbol>>');
+  process.exitCode = 1;
 }
