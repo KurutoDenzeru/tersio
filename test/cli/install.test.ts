@@ -198,7 +198,7 @@ test('installer accepts session-default flags and reports them', () => {
   const result = run('install', '--dry-run', '--yes', '--combo-default', 'lite');
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/Defaults: combo=lite/);
-  expect(result.stdout).toMatch(/RTK — bound to|RTK — the Tersio plugin owns the rewrite/);
+  expect(result.stdout).toMatch(/Shared files — sync session bridge/);
   expect(result.stdout).toMatch(/Tersio commands — install \/tersio root command/);
 
   // A scripted flag written before the rename still lands on the lite preset.
@@ -235,7 +235,7 @@ test('installer rejects removed project/both scopes', () => {
 test('installer dry-run installs every user-scope extension', () => {
   const result = run('install', '--dry-run', '--yes');
   expect(result.status, result.stderr).toBe(0);
-  expect(result.stdout).toMatch(/RTK — bound to|RTK — the Tersio plugin owns the rewrite/);
+  expect(result.stdout).toMatch(/Shared files — sync session bridge/);
   expect(result.stdout).toMatch(/Caveman — install session mode and rule bodies/);
   expect(result.stdout).toMatch(/Tersio commands — install \/tersio root command/);
   expect(result.stdout).not.toMatch(/mode reinforcement/i);
