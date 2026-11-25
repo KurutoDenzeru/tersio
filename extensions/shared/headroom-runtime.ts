@@ -144,29 +144,91 @@ function proxyPortOf(pid: number): number | null {
   return Number.isFinite(port) && port > 0 ? port : null;
 }
 
-/** Stop proxies that answer nowhere useful: first politely, then for real. */
-export function reapProxies(pids: number[], waitMs = 2_000): void {
-  for (const pid of pids) {
-    try {
-      process.kill(pid, 'SIGTERM');
-    } catch {
-      /* already gone */
-    }
+function killPid(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(pid, signal);
+  } catch {
+    /* already gone */
   }
+}
+
+/** Live children, depth first. A zombie counts as dead: it has exited and only waits to be reaped. */
+function pidIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+  } catch {
+    return false;
+  }
+  if (process.platform === 'win32') return true;
+  try {
+    return !execFileSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8', timeout: 2_000 })
+      .trim()
+      .startsWith('Z');
+  } catch {
+    return false;
+  }
+}
+
+function descendantPids(pid: number): number[] {
+  if (process.platform === 'win32') return [];
+  const found: number[] = [];
+  const walk = (parent: number): void => {
+    try {
+      for (const kid of parsePids(
+        execFileSync('pgrep', ['-P', String(parent)], { encoding: 'utf8', timeout: 2_000 }),
+      )) {
+        found.push(kid);
+        walk(kid);
+      }
+    } catch {
+      /* exits 1 when there are no children */
+    }
+  };
+  walk(pid);
+  return found;
+}
+
+/** SIGTERM, wait up to `waitMs`, then SIGKILL whatever still runs. */
+function stopPids(pids: number[], waitMs: number): void {
+  for (const pid of pids) killPid(pid, 'SIGTERM');
   const deadline = Date.now() + waitMs;
-  let alive = new Set(pids);
-  while (alive.size > 0 && Date.now() < deadline) {
-    const seen = new Set(headroomProxyPids());
-    alive = new Set(Array.from(alive).filter((pid) => seen.has(pid)));
-    if (alive.size > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+  let left = pids.filter(pidIsAlive);
+  while (left.length > 0 && Date.now() < deadline) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+    left = left.filter(pidIsAlive);
   }
-  for (const pid of alive) {
-    try {
-      process.kill(pid, 'SIGKILL');
-    } catch {
-      /* gone */
-    }
+  for (const pid of left) killPid(pid, 'SIGKILL');
+}
+
+/** Stop proxies: first politely, then for real. The tree is read first, because a dead parent loses it. */
+export function reapProxies(pids: number[], waitMs = 2_000): void {
+  const workers = pids.flatMap(descendantPids);
+  // The proxy leaves before its worker: a live pool respawns a lost worker.
+  stopPids(pids, waitMs);
+  stopPids(workers, 500);
+}
+
+/** headroom's image-pool worker, matched on its multiprocessing run string. */
+function headroomWorkerPids(): number[] {
+  if (process.platform === 'win32') return [];
+  try {
+    return parsePids(
+      execFileSync('pgrep', ['-f', 'headroom.*multiprocessing\\.(spawn|resource_tracker)'], {
+        encoding: 'utf8',
+        timeout: 3_000,
+      }),
+    );
+  } catch {
+    return [];
   }
+}
+
+/** Stop workers left with no proxy to serve, and report how many. A live proxy keeps its own pool. */
+export function reapHeadroomOrphans(waitMs = 1_000): number {
+  if (headroomProxyPids().length > 0) return 0;
+  const orphans = headroomWorkerPids().filter(pidIsAlive);
+  stopPids(orphans, waitMs);
+  return orphans.length;
 }
 
 interface DeploymentProfile {
@@ -361,6 +423,10 @@ async function startRuntime(bin: string, upstreams: HeadroomUpstreams = {}): Pro
     for (const entry of profiles) configureDeployment(entry, upstreams);
   }
   const args = proxyArgsForDeployment(profiles[0]?.proxyArgs ?? [], port, upstreams);
+  // A previous proxy that died without releasing its pool leaves workers holding its models; a new
+  // proxy would run beside them, so the strays are reclaimed before it starts. No proxy is alive
+  // here, which is what makes every worker found an orphan.
+  reapHeadroomOrphans();
   let spawnFailure = '';
   try {
     const child = spawn(bin, ['proxy', ...args], {
@@ -512,6 +578,8 @@ export async function stopHeadroomRuntime(
   }
   const left = headroomProxyPids(port);
   if (left.length > 0) reapProxies(left, options.fast ? 400 : 2_000);
+  // The pool belongs to the proxy, so it leaves with it; anything still alive here is an orphan.
+  reapHeadroomOrphans(options.fast ? 400 : 1_000);
   const remaining = headroomProxyPids(port).length;
   if (remaining === 0) clearProxyRecord();
   return remaining === 0

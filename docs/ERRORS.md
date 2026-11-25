@@ -549,3 +549,8 @@ The entries below are editing and verification discipline. No test, lint rule, o
 **What happened:** the full verification passed with an installed CodeGraph bundle, but engine and dashboard tests failed in a clean home.
 **Root cause:** the tests depended on a machine-local runtime that the CI install does not provide.
 **Prevention rule:** run the affected tests both with the real installed runtime and with an isolated home that has no external bundle.
+
+## 2026-11-25 — A bulk kill of orphaned workers also stopped the live proxy.
+**What happened:** while measuring the leak, I killed every headroom process whose parent was init, to clear 41 strays. The live proxy serves agents from a detached session, so its parent is also init, and it went down too. The dashboard and the agent lost their route until the next start.
+**Root cause:** process ownership was inferred from `ppid`, which is how a detached proxy looks after its launcher exits, not a sign that a process is abandoned.
+**Prevention rule:** kill a process only when its argv proves it is the user's target: match `headroom proxy` for proxies and the `multiprocessing` run string for their workers. Check how the live one is started before reaping anything by parent.

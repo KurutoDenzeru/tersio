@@ -3,6 +3,9 @@
 ### Added
 - **CodeGraph integration**, a new third-party surface beside the shipped modes. Tersio installs the upstream bundle into its own cache and answers symbol search, callers, and blast radius from the agent session, the CLI (`tersio codegraph status|init|sync|explore`), the MCP server, and the dashboard. The full upstream CLI is linked as `codegraph`, and the install asks before enabling it on a host. CodeGraph's own telemetry stays off wherever Tersio runs it. Thanks to @FrancoStino (#111).
 
+### Fixed
+- A stopped Headroom proxy takes its worker pool with it. Headroom runs image compression in a spawned subprocess, and a stop that signalled only the proxy reparented that worker to init, where it kept its ONNX models for the life of the machine. On this machine 41 such strays held 2.4GB. The stop now reads the process tree before it signals anything, stops the proxy first, then the workers. A start reclaims any worker left with no proxy running, so a pool orphaned by an earlier stop cannot outlive the next one.
+
 ## v2.25.22
 
 ### Added

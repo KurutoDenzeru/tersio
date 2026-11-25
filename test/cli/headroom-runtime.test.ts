@@ -189,6 +189,55 @@ describe('headroom runtime', () => {
   });
 });
 
+test.skipIf(process.platform === 'win32')('a stopped proxy takes its spawned worker down with it', async () => {
+  // headroom runs image compression in a spawned pool worker. A stop that signals only the parent
+  // reparents the worker to init, where it holds its ONNX models for the life of the machine.
+  const script = [
+    'import subprocess, time',
+    "subprocess.Popen(['python3', '-c', 'import time; time.sleep(60)', '--multiprocessing-fork'])",
+    'time.sleep(60)',
+  ].join('\n');
+  const proxy = spawn('python3', ['-c', script, 'headroom.cli proxy', '--port', '65002'], { stdio: 'ignore' });
+  const pid = proxy.pid!;
+  const childrenOf = (parent: number): number[] => {
+    try {
+      return execFileSync('pgrep', ['-P', String(parent)], { encoding: 'utf8' })
+        .split(/\r?\n/)
+        .map(Number)
+        .filter((n) => Number.isInteger(n) && n > 0);
+    } catch {
+      return [];
+    }
+  };
+  // Poll the child list instead of guessing a delay: the fork lands when pgrep reports it.
+  let kids = childrenOf(pid);
+  for (let i = 0; i < 100 && kids.length === 0; i += 1) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+    kids = childrenOf(pid);
+  }
+  expect(kids.length).toBeGreaterThan(0);
+  const alive = (p: number): boolean => {
+    try {
+      process.kill(p, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  try {
+    reapProxies([pid], 500);
+    for (const kid of kids) expect(alive(kid)).toBe(false);
+  } finally {
+    for (const p of [pid, ...kids]) {
+      try {
+        process.kill(p, 'SIGKILL');
+      } catch {
+        /* already stopped */
+      }
+    }
+  }
+}, 20_000);
+
 test.skipIf(process.platform === 'win32')('finds module and console-script proxy launchers', async () => {
   // Both invocations run under Python but expose different argv spellings.
   const moduleProxy = spawn('python3', ['-c', 'import time; time.sleep(30)', 'headroom.cli proxy', '--port', '65000'], {
