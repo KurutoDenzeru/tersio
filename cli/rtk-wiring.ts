@@ -60,16 +60,16 @@ async function copyPiHook(source: HostId, options: WiringOptions): Promise<boole
 export async function wireRtk(rtkBin: string, host: HostId, options: WiringOptions = {}): Promise<boolean> {
   const cap = hostCap(host);
   if (cap?.rtkPlugin) {
-    if (!options.dryRun && !options.quiet) console.log('  RTK — no separate entry; the Tersio plugin owns the rewrite');
+    if (!options.dryRun && !options.quiet && options.verbose) console.log('  🗜️ RTK — the Tersio plugin owns the rewrite');
     return existsSync(rtkBin);
   }
   const agent = cap?.rtkAgent;
   if (!agent) return false;
   if (options.dryRun) {
-    if (!options.quiet) console.log(`  RTK — would run: rtk init -g --agent ${agent}`);
+    if (!options.quiet && options.verbose) console.log(`  🗜️ RTK — would bind ${host}`);
     return true;
   }
-  if (!options.quiet) console.log(`  RTK — bind ${host} with rtk init -g --agent ${agent}`);
+  if (!options.quiet && options.verbose) console.log(`  🗜️ RTK — bound to ${host}`);
   try {
     await init(rtkBin, agent);
   } catch (e) {

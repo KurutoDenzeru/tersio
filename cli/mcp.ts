@@ -3,29 +3,38 @@ import { createInterface } from 'node:readline';
 import { readActivity } from './activity.ts';
 import {
   CAVEMAN_DEFAULTS,
+  CODEGRAPH_DEFAULTS,
   COMBO_DEFAULTS,
+  execFileP,
   HEADROOM_DEFAULTS,
   PACKAGE_VERSION,
   PONYTAIL_DEFAULTS,
   PSTACK_DEFAULTS,
   RTK_DEFAULTS,
-  execFileP,
 } from './common.ts';
+import {
+  CODEGRAPH_SYNC_MODES,
+  type CodegraphSyncMode,
+  supportsCodegraph,
+} from '../extensions/shared/plugin-settings.ts';
 import { resolveHeadroomBinary } from '../extensions/shared/utils.ts';
 import { formatCurrency, readStoredCurrency } from './currency.ts';
 import { agentStats } from '../extensions/shared/agent-snapshot.ts';
 import { detectHosts } from './hosts.ts';
-import { applyComboPreset, formatProfile, saveHostDefaults, storedProfile, writePluginSettings } from './profile.ts';
 import type { HostDefaultField } from './profile.ts';
+import { applyComboPreset, formatProfile, saveHostDefaults, storedProfile, writePluginSettings } from './profile.ts';
 import { isRangeKey, RANGES } from '../extensions/shared/agent-stats.ts';
 import type { RangeKey } from '../extensions/shared/agent-types.ts';
 import { readHeadroomSavings, readHeadroomStats } from '../extensions/shared/headroom-gain.ts';
 import { headroomProxyUrl } from '../extensions/shared/headroom-proxy.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
-import { hostCap } from '../extensions/shared/host-caps.ts';
 import type { HostId } from '../extensions/shared/host-caps.ts';
+import { hostCap } from '../extensions/shared/host-caps.ts';
 import { tersioMcpConfigured, tersioMcpHosts } from '../extensions/shared/mcp-config.ts';
 import { hostOfSessionFile } from '../extensions/shared/usage-ledger.ts';
+import { exploreSymbol, ensureCodeGraphBundle, getCodeGraphStatus, syncCodeGraph } from '../extensions/codegraph/client.ts';
+import { formatExplore } from '../extensions/codegraph/shared.ts';
+import { resolveCodeGraphLibrary } from '../extensions/codegraph/shared.ts';
 
 /** The spec version this server speaks; a client asking for an older one it knows gets that back. */
 const PROTOCOL_VERSION = '2025-06-18';
@@ -63,6 +72,10 @@ interface HeadroomToolArgs {
   hash?: unknown;
 }
 
+interface CodegraphToolArgs {
+  query?: unknown;
+  action?: string;
+}
 interface ModesToolArgs {
   combo?: unknown;
   caveman?: unknown;
@@ -70,6 +83,8 @@ interface ModesToolArgs {
   ponytail?: unknown;
   pstack?: unknown;
   headroom?: unknown;
+  codegraph?: unknown;
+  codegraphSync?: unknown;
   /** One agent's own section, so a mode can differ per host. */
   host?: unknown;
 }
@@ -82,6 +97,8 @@ interface ModeWants {
   ponytail: string | null;
   pstack: 'on' | 'off' | null;
   headroom: 'on' | 'off' | null;
+  codegraph: 'on' | 'off' | null;
+  codegraphSync: CodegraphSyncMode | null;
 }
 
 /** The only stdout a client ever sees is the protocol, so a tool that prints (the settings save line) is captured and its text becomes the tool's answer. */
@@ -191,6 +208,8 @@ async function modesText(want: ModeWants, host: HostId | null): Promise<string> 
   if (want.ponytail !== null) next = { ...next, ponytailDefault: want.ponytail };
   if (want.pstack !== null) next = { ...next, pstackDefault: want.pstack };
   if (want.headroom !== null) next = { ...next, headroomDefault: want.headroom };
+  if (want.codegraph !== null) next = { ...next, codegraphDefault: want.codegraph };
+  if (want.codegraphSync !== null) next = { ...next, codegraphSync: want.codegraphSync };
   const fields: HostDefaultField[] = [];
   if (want.combo !== null) fields.push('comboDefault', 'cavemanDefault', 'rtkDefault', 'ponytailDefault');
   if (want.caveman !== null) fields.push('cavemanDefault');
@@ -198,9 +217,11 @@ async function modesText(want: ModeWants, host: HostId | null): Promise<string> 
   if (want.ponytail !== null) fields.push('ponytailDefault');
   if (want.pstack !== null) fields.push('pstackDefault');
   if (want.headroom !== null) fields.push('headroomDefault');
-  if (fields.length === 0) {
+  if (want.codegraph !== null) fields.push('codegraphDefault');
+  // The sync interval is one schedule for every agent, so it lives in the flat store, never in a host section.
+  if (fields.length === 0 && want.codegraphSync === null) {
     const scope = host ? ` for ${host}` : '';
-    return `Current session defaults${scope}: ${formatProfile(next)}. Pass combo (${[...COMBO_DEFAULTS].join(', ')}) or any single mode — caveman, rtk, ponytail, pstack, headroom — to change them${host ? `, and host to scope them to one agent` : ''}.`;
+    return `Current session defaults${scope}: ${formatProfile(next)}. Pass combo (${[...COMBO_DEFAULTS].join(', ')}) or any single mode — caveman, rtk, ponytail, pstack, headroom, codegraph — to change them, or codegraphSync for the CodeGraph sync interval${host ? `, and host to scope a mode to one agent` : ''}.`;
   }
   // A host argument writes that agent's own section, which wins over the shared store at session start.
   const { text } = await captureLog(() =>
@@ -304,7 +325,7 @@ const TOOLS = [
   {
     name: 'tersio_modes',
     description:
-      'Read the session-start mode defaults, or set them: combo applies a preset, and any single mode (caveman, rtk, ponytail, pstack, headroom) overrides its piece of that preset. Pass host to scope the change to one agent.',
+      'Read the session-start mode defaults, or set them: combo applies a preset; each single mode (caveman, rtk, ponytail, pstack, headroom, codegraph) sets one mode; codegraphSync sets the CodeGraph sync interval for every agent. Pass host to scope a mode to one agent.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -329,6 +350,16 @@ const TOOLS = [
           type: 'string',
           enum: [...HEADROOM_DEFAULTS],
           description: "Headroom token-saver mode: on or off. Opt-in; tracks the user's own Headroom install.",
+        },
+        codegraph: {
+          type: 'string',
+          enum: [...CODEGRAPH_DEFAULTS],
+          description: 'CodeGraph code index: on or off. On by default; tracks the local CodeGraph index.',
+        },
+        codegraphSync: {
+          type: 'string',
+          enum: [...CODEGRAPH_SYNC_MODES],
+          description: 'CodeGraph sync: live (file watcher), 5m, 15m, 1h, or manual.',
         },
         host: {
           type: 'string',
@@ -356,7 +387,124 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: 'tersio_codegraph',
+    description:
+      'CodeGraph: explore code structure, symbol definitions, callers, dependencies, and blast radius across the indexed codebase.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Symbol name, function name, class, or search query to explore.',
+        },
+        action: {
+          type: 'string',
+          enum: ['explore', 'sync', 'status'],
+          description: 'Action to perform: explore (default), sync, or status.',
+        },
+      },
+    },
+  },
 ] as const;
+
+type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
+
+const CODEGRAPH_ACTIONS = ['explore', 'sync', 'status'];
+const CODEGRAPH_SYNC_TIMEOUT_MS = 120_000;
+/** A ~300MB download will not finish inside a tool call on every network, so a timeout only ends the wait, never the install. */
+const CODEGRAPH_BOOTSTRAP_TIMEOUT_MS = 120_000;
+
+/** A sync that never answers must not hold the MCP server's one request loop. */
+async function withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const limit = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} did not finish within ${ms / 1000}s.`)), ms);
+  });
+  try {
+    return await Promise.race([work, limit]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** A CodeGraph runtime failure (no git repo, no bundle, a sync that returned nothing) is a tool result the model can read, not a protocol error. */
+async function codegraphTool(args: CodegraphToolArgs): Promise<ToolResult> {
+  const action = typeof args.action === 'string' ? args.action : 'explore';
+  if (!CODEGRAPH_ACTIONS.includes(action)) {
+    throw new RpcError(-32602, `action must be one of ${CODEGRAPH_ACTIONS.join(', ')}`);
+  }
+  try {
+    return await runCodegraphAction(action, args);
+  } catch (error) {
+    if (error instanceof RpcError) throw error;
+    return { isError: true, content: [{ type: 'text', text: `CodeGraph error: ${(error as Error).message}` }] };
+  }
+}
+
+async function runCodegraphAction(action: string, args: CodegraphToolArgs): Promise<ToolResult> {
+  const projectRoot = process.cwd();
+
+  // The MCP tool is the only CodeGraph surface on Codex, Claude Code, and DeepSeek Harness, and none
+  // of them runs a session hook, so a missing bundle installs here once and the retry answers.
+  if (action !== 'status' && !resolveCodeGraphLibrary()) {
+    try {
+      await withTimeout(ensureCodeGraphBundle(projectRoot), CODEGRAPH_BOOTSTRAP_TIMEOUT_MS, 'the CodeGraph install');
+    } catch (error) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: 'text',
+            text: `CodeGraph: ${(error as Error).message} The install keeps running in the background; call this tool again in a minute.`,
+          },
+        ],
+      };
+    }
+  }
+
+  if (action === 'status') {
+    const status = await getCodeGraphStatus(projectRoot);
+    if (status.error) {
+      return { isError: true, content: [{ type: 'text', text: `CodeGraph error: ${status.error}` }] };
+    }
+    if (!status.initialized) {
+      return { content: [{ type: 'text', text: `CodeGraph: Not initialized in ${projectRoot}.` }] };
+    }
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `CodeGraph status for ${projectRoot}: ${status.nodeCount} symbols, ${status.edgeCount} edges, ${status.fileCount} files.`,
+        },
+      ],
+    };
+  }
+
+  if (action === 'sync') {
+    const stats = await withTimeout(syncCodeGraph(projectRoot), CODEGRAPH_SYNC_TIMEOUT_MS, 'CodeGraph sync');
+    if (!stats) throw new Error('CodeGraph sync returned no statistics.');
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `CodeGraph sync complete: ${stats.nodeCount} nodes, ${stats.edgeCount} edges across ${stats.fileCount} files.`,
+        },
+      ],
+    };
+  }
+
+  const query = typeof args.query === 'string' ? args.query : '';
+  if (!query) {
+    return {
+      content: [{ type: 'text', text: 'Error: missing query argument for codegraph exploration.' }],
+      isError: true,
+    };
+  }
+
+  const result = await exploreSymbol(query, projectRoot);
+  return { content: [{ type: 'text', text: formatExplore(result) }] };
+}
 
 async function callTool(
   params: unknown,
@@ -364,7 +512,11 @@ async function callTool(
 ): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
   const call = (params ?? {}) as { name?: unknown; arguments?: unknown };
   const name = typeof call.name === 'string' ? call.name : null;
-  const args = (call.arguments ?? {}) as StatsToolArgs & ActivityToolArgs & ModesToolArgs & HeadroomToolArgs;
+  const args = (call.arguments ?? {}) as StatsToolArgs &
+    ActivityToolArgs &
+    ModesToolArgs &
+    HeadroomToolArgs &
+    CodegraphToolArgs;
   if (name === 'tersio_stats') {
     if (args.range !== undefined && !isRangeKey(args.range))
       throw new RpcError(-32602, `range must be one of ${RANGES.join(', ')}`);
@@ -402,10 +554,20 @@ async function callTool(
       ponytail: oneOf(args.ponytail, PONYTAIL_DEFAULTS, 'ponytail'),
       pstack: rtkOrPstack(args.pstack, PSTACK_DEFAULTS, 'pstack'),
       headroom: rtkOrPstack(args.headroom, HEADROOM_DEFAULTS, 'headroom'),
+      codegraph: rtkOrPstack(args.codegraph, CODEGRAPH_DEFAULTS, 'codegraph'),
+      codegraphSync: oneOf(
+        args.codegraphSync,
+        new Set(CODEGRAPH_SYNC_MODES),
+        'codegraphSync',
+      ) as CodegraphSyncMode | null,
     };
     const asked = args.host === undefined ? null : String(args.host);
     if (asked !== null && hostCap(asked) === null)
       throw new RpcError(-32602, `host must be one of ${tersioMcpHosts().join(', ')}`);
+    if (asked !== null && want.codegraphSync !== null)
+      throw new RpcError(-32602, 'codegraphSync applies to every agent; omit host');
+    if (asked !== null && want.codegraph !== null && !supportsCodegraph(asked))
+      throw new RpcError(-32602, `CodeGraph is not supported for ${asked}`);
     const host = asked as HostId | null;
     return { content: [{ type: 'text', text: await modesText(want, host) }] };
   }
@@ -473,6 +635,7 @@ async function callTool(
     ];
     return { content: [{ type: 'text', text: lines.join('\n') }] };
   }
+  if (name === 'tersio_codegraph') return await codegraphTool(args);
   throw new RpcError(-32602, `unknown tool: ${name}`);
 }
 
@@ -555,8 +718,8 @@ function mcpSend(msg: unknown): void {
 }
 
 /** Serves one client over stdio and exits when the client disconnects. */
-export async function runMcpServer(): Promise<void> {
-  const lines = createInterface({ input: process.stdin });
+export async function runMcpServer(input: NodeJS.ReadableStream = process.stdin): Promise<void> {
+  const lines = createInterface({ input });
   let queue: Promise<void> = Promise.resolve();
   lines.on('line', (line) => {
     const text = line.trim();
@@ -570,8 +733,8 @@ export async function runMcpServer(): Promise<void> {
     // A client may call tools in parallel, and the printing tools patch the console, so one handler at a time; an overlapping patch could leak a print onto the wire.
     if (message) queue = queue.then(() => handleMessage(message, mcpSend));
   });
-  // The server never outlives its client: a closed stream ends the process.
-  lines.on('close', () => process.exit(0));
+  // A closed stream ends the server, but the answers already queued are still owed to the client.
+  lines.on('close', () => void queue.then(() => process.exit(0)));
   const { promise } = Promise.withResolvers<void>();
   await promise;
 }

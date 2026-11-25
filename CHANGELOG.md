@@ -1,5 +1,8 @@
 ## Unreleased
 
+### Added
+- **CodeGraph integration**, a new third-party surface beside the shipped modes. Tersio installs the upstream bundle into its own cache and answers symbol search, callers, and blast radius from the agent session, the CLI (`tersio codegraph status|init|sync|explore`), the MCP server, and the dashboard. The full upstream CLI is linked as `codegraph`, and the install asks before enabling it on a host. CodeGraph's own telemetry stays off wherever Tersio runs it. Thanks to @FrancoStino (#111).
+
 ## v2.25.22
 
 ### Added

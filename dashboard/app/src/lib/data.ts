@@ -2,12 +2,12 @@
 import {useCallback, useEffect, useState} from "react"
 import {FX_SNAPSHOT, fxMoney, isCurrencyCode} from "./format"
 import type {
-    AgentHeadroom,
-    AgentSessionTrace,
-    AgentStats,
-    AgentView,
-    RangeKey,
-    RtkRow,
+  AgentHeadroom,
+  AgentSessionTrace,
+  AgentStats,
+  AgentView,
+  RangeKey,
+  RtkRow,
 } from "../../../../extensions/shared/agent-types.ts"
 
 // The API contract is defined once in the backend; the dashboard re-exports it as its public type surface.
@@ -382,6 +382,42 @@ export async function postRoute(
   on: boolean,
 ): Promise<{ ok: boolean; detail: string; error?: string } | null> {
   return apiJson("/api/headroom/route", { name, on })
+}
+export interface CodeGraphStatusData {
+  root?: string
+  initialized: boolean
+  nodeCount: number
+  edgeCount: number
+  fileCount: number
+  dbSizeBytes: number
+  isWatching: boolean
+  watcherObserved?: boolean
+  isIndexing: boolean
+  lastUpdated?: number
+  error?: string
+  /** Symbols by kind, when the engine reports the breakdown. */
+  nodesByKind?: Record<string, number>
+  /** Files by language, when the engine reports the breakdown. */
+  filesByLanguage?: Record<string, number>
+  /** The session default is on; false means CodeGraph is off, so no index is kept or synced. */
+  enabled?: boolean
+  /** The configured sync: live, 5m, 15m, 1h or manual. */
+  syncMode?: string
+}
+
+export async function fetchCodeGraphStatus(): Promise<CodeGraphStatusData | null> {
+  if (isFileExport()) return null
+  const body = await apiJson<{ ok: boolean; status: CodeGraphStatusData; root?: string; syncMode: string; enabled: boolean }>(
+    "/api/codegraph/status",
+  )
+  return body?.status
+    ? { ...body.status, root: body.root, enabled: body.enabled, syncMode: body.syncMode }
+    : null
+}
+
+
+export async function postCodeGraphSync(): Promise<{ ok: boolean; stats?: unknown; error?: string } | null> {
+  return apiJson("/api/codegraph/sync", {})
 }
 
 /** One vendor row from the scorecard: the installed version against the latest release. */

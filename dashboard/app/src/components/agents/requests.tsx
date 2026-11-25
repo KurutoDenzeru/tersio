@@ -1,31 +1,21 @@
 // Requests: the range in six figures, then the request log with a search and a status filter.
-import { useMemo, useState } from "react"
+import {useMemo, useState} from "react"
+import type {Column} from "@/components/charts"
 import {
-  AgentCell,
-  Card,
-  ModelCell,
-  PagedTable,
-  Page,
-  PageHeader,
-  SearchInput,
-  Segmented,
-  Stat,
-  StatGrid,
+    AgentCell,
+    Card,
+    ModelCell,
+    Page,
+    PagedTable,
+    PageHeader,
+    SearchInput,
+    Segmented,
+    Stat,
+    StatGrid,
 } from "@/components/charts"
-import type { Column } from "@/components/charts"
-import { EmptyState } from "@/components/common"
-import {
-  fmt,
-  fmtMs,
-  fmtShort,
-  hostName,
-  pct,
-  projectLabel,
-  relAge,
-  runStatusOf,
-  whenStamp,
-} from "@/lib/format"
-import type { AgentRequestRow, AgentStats } from "@/lib/data"
+import {EmptyState} from "@/components/common"
+import {fmt, fmtMs, fmtShort, hostName, pct, projectLabel, relAge, runStatusOf, whenStamp,} from "@/lib/format"
+import type {AgentRequestRow, AgentStats} from "@/lib/data"
 
 type RowStatus = "completed" | "aborted" | "failed"
 type StatusFilter = "all" | RowStatus
@@ -301,12 +291,33 @@ function buildRequestColumns(money: (v: number) => string): Array<Column<AgentRe
       render: (row) => fmtShort(row.output),
     },
     {
+      key: "baseline",
+      header: "Without cache reads",
+      title: "API-equivalent cost with cached input billed at the full input rate; output and cache writes are unchanged",
+      align: "right",
+      sort: (row) => row.unoptimizedCost ?? -1,
+      render: (row) => row.unoptimizedCost == null ? "n/a" : money(row.unoptimizedCost),
+    },
+    {
       key: "cost",
       header: "Cost",
-      title: "API-equivalent estimate",
+      title: "Recorded API-equivalent estimate, not an invoice",
       align: "right",
       sort: (row) => row.costUsd,
       render: (row) => money(row.costUsd),
+    },
+    {
+      key: "saved",
+      header: "Saved",
+      title: "Cache-read savings only. Per-request Headroom savings are not recorded.",
+      align: "right",
+      sort: (row) => row.savedCost ?? -1,
+      render: (row) => row.savedCost == null || row.unoptimizedCost == null ? "n/a" : (
+        <span className="mono whitespace-nowrap">
+          {money(row.savedCost)}{" "}
+          <span className="text-dim">({pct(row.unoptimizedCost > 0 ? row.savedCost / row.unoptimizedCost : 0, 1)})</span>
+        </span>
+      ),
     },
     {
       key: "duration",

@@ -28,6 +28,7 @@ Tersio installs into Oh My Pi, Pi, Pi-in-go, OpenCode, DeepSeek Harness, Codex, 
 | 🧠 **Ponytail** | Leaner code. YAGNI: no feature, option, or abstraction nobody asked for, and the shortest diff that still works. |
 | 🥔 **pstack** | Rigor mode. It applies a design principle when the moment fits, and owns the approach, the check, and the design. Opt-in, on its own switch. |
 | 🍃 **Headroom** | Headroom shrinks tool output, file reads, and history. Opt-in; Tersio reads its savings and never turns it on for you. |
+| 🕸️ **CodeGraph** | A local code graph of symbols, callers, and dependencies, so the agent asks for the blast radius of a change instead of reading whole files. On by default. |
 | 🧩 **Combo** | One command sets Caveman, RTK, and Ponytail, at three strengths. |
 | 📊 **Dashboard** | What you spent, per model and per day. |
 
@@ -140,7 +141,9 @@ Add this entry under `mcpServers` in the client's MCP settings:
 
 That is all of it, with no port or token to set up. `tersio install` adds the same entry for OMP, Pi, PiG, and OpenCode, and asks before it touches anything. DeepSeek Harness already carries the entry in its bundle.
 
-Your agent then gets six tools:
+For development, use an absolute Bun command with `args: ["/absolute/path/to/tersio/tersio.ts", "mcp"]`. A source checkout uses its own entry when creating an MCP registration, instead of another global installation. Existing server commands are preserved; restart the MCP server after changing one. This does not switch the installed agent extensions or an already running dashboard.
+
+Your agent then gets seven tools:
 
 | Tool | What it answers |
 |---|---|
@@ -150,6 +153,7 @@ Your agent then gets six tools:
 | `tersio_sessions` | Recent sessions with model, tokens, and cost. |
 | `tersio_modes` | The starting modes, shown or changed, for every agent or one. |
 | `tersio_headroom` | Savings, live status, stored originals, and its own commands. |
+| `tersio_codegraph` | Symbol search, callers, and blast radius from the CodeGraph index. |
 
 Two resources answer without using a tool: `tersio://settings` and `tersio://hosts`.
 
@@ -161,13 +165,35 @@ Two resources answer without using a tool: `tersio://settings` and `tersio://hos
 | `tersio update` | Update the Tersio CLI. `--host <agent>` also refreshes that agent's extensions and add-ons (Caveman rule, Headroom, Ponytail) and reports a newer rtk release; no prompt is asked |
 | `tersio doctor` (Defaults row) | `tersio doctor` prints the shared defaults and each agent's overrides, so a value's source is visible without reading the store |
 | `tersio doctor` | Check each host, extension/plugin wiring, Ponytail, RTK, and OpenCode service health (`--fix` repairs, `--fix=<scope>` one scope, `--dry-run` previews) |
-| `tersio dashboard` | Open the Dashboard (`--open`, `--export <file>`, `--port <n>` (defaults to `3456` or `$TERSIO_DASHBOARD_PORT`), `--currency <code>`; serves localhost only) |
+| `tersio dashboard` | Open the Dashboard (`--open`, `--export <file>`, `--port <n>` (defaults to `3456` or `$TERSIO_DASHBOARD_PORT`), `--currency <code>`, `--bind lan` for network reads; localhost by default) |
 | `tersio mcp` | Start the Tersio MCP server on stdio (see [MCP](#-mcp)) |
 | `tersio modes` | Read or set session defaults without a slash command; `--host <agent>` scopes the write |
 | `tersio uninstall` | Remove extensions, registrations, the Ponytail plugin, and the `rtk.ts` OMP wiring (`--keep-ponytail` keeps Ponytail; `--remove-rtk` also removes that wiring, never the binary) |
 | `tersio version` | Print version |
 
-Flags: `--dry-run`, `--yes`/`-y`, `--verbose`, `--combo-default`/`--caveman-default`/`--rtk-default`/`--ponytail-default`/`--pstack-default`/`--headroom-default`, `--currency <code>` (usage/dashboard display currency; flag wins, then the dashboard's own default, then USD). Legacy `--doctor` / `--uninstall` forms still work.
+Flags: `--dry-run`, `--yes`/`-y`, `--verbose`, `--combo-default`/`--caveman-default`/`--rtk-default`/`--ponytail-default`/`--pstack-default`/`--headroom-default`/`--codegraph-default`, `--codegraph-sync <live\|5m\|15m\|1h\|manual>`, `--currency <code>` (usage/dashboard display currency; flag wins, then the dashboard's own default, then USD). Legacy `--doctor` / `--uninstall` forms still work.
+
+`--bind lan` exposes dashboard data without authentication to the local network. State-changing requests are accepted only from the local machine and the dashboard's own origin. The dashboard prints LAN addresses at startup and a QR code for each address when stdout is a terminal and `NO_COLOR` is unset.
+
+pstack is an adapted fork pinned in each Tersio release. `tersio update --host <agent>` installs that release's copy; newer upstream changes first need review and a new Tersio release.
+
+## 🕸️ CodeGraph
+
+**CodeGraph** keeps a local graph of your code: symbols, callers, dependencies, and blast radius. The agent asks what a change touches instead of reading whole files. It is on by default; the index is built for you, and `tersio codegraph init` builds it by hand.
+
+For OMP, pi, PiG, and OpenCode, Tersio installs the official platform-specific CodeGraph bundle during setup. A host-native plugin install downloads it in the background at the first session if it is missing. The download needs npm, network access, and several hundred MB of disk space. Tersio stores its bundle under `~/.tersio/codegraph/bundles`; an existing CodeGraph bundle or `CODEGRAPH_LIB_PATH` is left in place. `tersio update` checks for a newer bundle. With `PI_OFFLINE=1`, Tersio does not download it.
+
+An enabled session builds the CodeGraph index for its Git repository and keeps it synchronized while the session runs. Existing indexes sync in the background at startup, except in `manual` mode. No cron or manual initialization is needed. The Tools page reports the repository containing the dashboard's working directory and the recently observed watcher state. Dashboard indexing and sync actions accept requests only from the local machine.
+
+The index follows your edits at the interval you choose. The choice is shared by every agent, set in the dashboard's Quick start or with `tersio modes codegraph-sync <mode>`:
+
+| Mode | When the index follows changes |
+|---|---|
+| `live` | A file watcher, debounced at 1.5 seconds, plus a sync after each edit tool call. The default. |
+| `5m`, `15m`, `1h` | No watcher; an incremental sync on that timer. |
+| `manual` | Only `tersio codegraph sync`, `/codegraph sync`, or the dashboard's Sync Now. |
+
+Uninstall leaves project indexes and the downloaded CodeGraph bundle in place.
 
 ## ⌨️ Commands reference
 
@@ -187,10 +213,15 @@ It is display-only — it never enters the model context, so it costs the sessio
 | `/ponytail off\|lite\|full\|ultra\|status` | [Ponytail](https://github.com/DietrichGebert/ponytail) code levels. |
 | `/pstack on\|off\|status` | [pstack](https://github.com/cursor/plugins/tree/main/pstack) rigor mode. Opt-in; `normal mode` clears it. |
 | `/headroom on\|off\|status` | [Headroom](https://github.com/headroomlabs-ai/headroom) compression. Opt-in; Tersio reads its savings and never installs it silently. |
+| `tersio modes codegraph on\|off`, `tersio modes codegraph-sync <mode>` | CodeGraph defaults and sync interval. `--host <agent>` scopes on/off to one agent; sync is shared. |
 | `/tersio status [on\|off\|toggle]` | Active modes and combo level. `on`, `off`, or `toggle` shows or hides the footer status line and saves the choice for this agent. |
 | `/tersio update <ponytail\|rtk\|caveman\|all> [--dry-run]` | Update add-ons. |
 | `/tersio dashboard` | Open the dashboard. |
 | `/tersio help` | This table. |
+
+With RTK enabled, the OMP, pi, and PiG shell hooks block a command if RTK cannot check it or denies it. Commands that RTK identifies as unsupported run unchanged. If RTK is missing, these hooks block shell commands until it is available or RTK is switched off. Native tool results are filtered separately and only when a matching filter can reduce them.
+
+With Headroom enabled in OMP, a provider request is aborted if its model is not routed through the proxy or the proxy is unavailable. This check requires an OMP provider transport that invokes `before_provider_request`; other hosts and custom transports may not provide that guarantee.
 
 ## 🗂️ Files and backups
 

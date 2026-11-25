@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT UNIQUE NOT NULL, mtime REAL NOT NULL, size INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS messages (file_id INTEGER NOT NULL REFERENCES files(id), t REAL, model TEXT NOT NULL,
   i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, tf REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,
-  usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, a TEXT, id TEXT, tc TEXT, p TEXT);
+  usd REAL, usd_estimated INTEGER NOT NULL DEFAULT 0, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, a TEXT, id TEXT, tc TEXT, p TEXT);
 CREATE INDEX idx_messages_file ON messages(file_id);
 CREATE INDEX idx_messages_t ON messages(t);
 CREATE INDEX idx_messages_h_t ON messages(h, t);
@@ -47,8 +47,9 @@ export interface MessageFixture {
   output?: number;
   cacheRead?: number;
   cacheWrite?: number;
-  /** The cost the host reported. Absent when the host priced nothing, which reads as $0.00. */
+  /** The reported or rate-card cost. Absent when unpriced; a numeric zero is a valid explicit cost. */
   cost?: number | null;
+  usdEstimated?: boolean;
   agentType?: string;
   /** Tool names this message handed off to, as the store keeps them. */
   tools?: string[];
@@ -112,6 +113,7 @@ export function writeUsageStore(file: string, fixture: { messages: MessageFixtur
           'cr',
           'cw',
           'usd',
+          'usd_estimated',
           'st',
           'note',
           'tools',
@@ -134,6 +136,7 @@ export function writeUsageStore(file: string, fixture: { messages: MessageFixtur
             m.cacheRead ?? 0,
             m.cacheWrite ?? 0,
             m.cost ?? null,
+            m.usdEstimated ? 1 : 0,
             m.stop === 'stop' || m.stop === undefined ? 'completed' : m.stop,
             m.error ?? null,
             JSON.stringify(m.tools ?? []),

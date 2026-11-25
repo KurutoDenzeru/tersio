@@ -1,9 +1,11 @@
 // cli/profile.ts — session-start defaults and the display-currency default,
 import { existsSync, promises as fs, readFileSync } from 'node:fs';
 import path from 'node:path';
+import type { WriteOptions } from './common.ts';
 import {
   ACCENT_DEFAULTS,
   CAVEMAN_DEFAULTS,
+  CODEGRAPH_DEFAULTS,
   COMBO_PRESET_MODES,
   HEADROOM_DEFAULTS,
   PACKAGE_NAME,
@@ -11,14 +13,14 @@ import {
   PSTACK_DEFAULTS,
   verbose,
 } from './common.ts';
-import type { WriteOptions } from './common.ts';
 import os from 'node:os';
+import type { CurrencyCode } from './currency.ts';
 import { DEFAULT_CURRENCY, isCurrencyCode } from './currency.ts';
 import { recordActivity } from './activity.ts';
-import type { CurrencyCode } from './currency.ts';
 import type { HostId } from '../extensions/shared/host-caps.ts';
 import { readTextIfExists } from '../extensions/shared/utils.ts';
-import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
+import type { CodegraphSyncMode } from '../extensions/shared/plugin-settings.ts';
+import { CODEGRAPH_SYNC_MODES, tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { setClaudeRtkHook } from '../extensions/shared/claude-state.ts';
 
 function readTextIfExistsSync(file: string): string | null {
@@ -36,6 +38,8 @@ interface Profile {
   ponytailDefault: string;
   pstackDefault: string;
   headroomDefault: string;
+  codegraphDefault: string;
+  codegraphSync: CodegraphSyncMode;
   currency: CurrencyCode;
   backupSchedule: BackupSchedule;
   /** How long usage rows are kept, in days. `0` keeps everything. */
@@ -64,6 +68,8 @@ function defaultProfile(): Profile {
     ponytailDefault: 'off',
     pstackDefault: 'off',
     headroomDefault: 'off',
+    codegraphDefault: 'on',
+    codegraphSync: 'live',
     currency: DEFAULT_CURRENCY,
     backupSchedule: 'monthly',
     retentionDays: 0,
@@ -87,6 +93,8 @@ interface StoredSettings {
   ponytailDefault?: unknown;
   pstackDefault?: unknown;
   headroomDefault?: unknown;
+  codegraphDefault?: unknown;
+  codegraphSync?: unknown;
   hosts?: unknown;
   currency?: unknown;
   backupSchedule?: unknown;
@@ -123,6 +131,13 @@ function applyStored(base: Profile, stored: StoredSettings): void {
     base.pstackDefault = stored.pstackDefault;
   if (typeof stored.headroomDefault === 'string' && HEADROOM_DEFAULTS.has(stored.headroomDefault))
     base.headroomDefault = stored.headroomDefault;
+  if (typeof stored.codegraphDefault === 'string' && CODEGRAPH_DEFAULTS.has(stored.codegraphDefault))
+    base.codegraphDefault = stored.codegraphDefault;
+  if (
+    typeof stored.codegraphSync === 'string' &&
+    (CODEGRAPH_SYNC_MODES as readonly string[]).includes(stored.codegraphSync)
+  )
+    base.codegraphSync = stored.codegraphSync as CodegraphSyncMode;
   if (typeof stored.currency === 'string' && isCurrencyCode(stored.currency.trim().toUpperCase())) {
     base.currency = stored.currency.trim().toUpperCase() as CurrencyCode;
   }
@@ -139,6 +154,13 @@ function applyStored(base: Profile, stored: StoredSettings): void {
   if (Array.isArray(stored.subagentMarkers)) {
     // An empty marker would match every turn.
     base.subagentMarkers = stored.subagentMarkers.filter((m): m is string => typeof m === 'string' && m.trim() !== '');
+  }
+}
+function stripRetiredRoutingDefaults(stored: StoredSettings): void {
+  delete (stored as Record<string, unknown>).routingDefault;
+  if (!stored.hosts || typeof stored.hosts !== 'object') return;
+  for (const section of Object.values(stored.hosts)) {
+    if (section && typeof section === 'object') delete (section as Record<string, unknown>).routingDefault;
   }
 }
 
@@ -203,11 +225,12 @@ function modeSection(key: HostDefaultField, value: unknown): Record<string, unkn
 async function writePluginSettings(
   profile: Profile,
   options: WriteOptions,
-  opts: { keepSharedModes?: boolean } = {},
+  opts: { keepSharedModes?: boolean; report?: (line: string) => void } = {},
 ): Promise<void> {
   const file = tersioSettingsFile();
   const before = parseStored(await readTextIfExists(file));
-  const stored = before ?? {};
+  const stored = { ...before };
+  stripRetiredRoutingDefaults(stored);
   // A host-scoped run keeps the shared mode values: its choices belong in the host section only.
   const modes: Record<string, unknown> = opts.keepSharedModes
     ? {}
@@ -218,6 +241,7 @@ async function writePluginSettings(
         ...modeSection('ponytailDefault', profile.ponytailDefault),
         ...modeSection('pstackDefault', profile.pstackDefault),
         ...modeSection('headroomDefault', profile.headroomDefault),
+        ...modeSection('codegraphDefault', profile.codegraphDefault),
       };
   const values = {
     ...stored,
@@ -230,6 +254,8 @@ async function writePluginSettings(
     accent: profile.accent,
     sidebarWidth: profile.sidebarWidth,
     sidebarOpen: profile.sidebarOpen,
+    // The sync interval belongs to the project, not to one agent, so it never lands in a host section.
+    codegraphSync: profile.codegraphSync,
     ...(profile.subagentMarkers.length > 0 ? { subagentMarkers: profile.subagentMarkers } : {}),
   };
   if (options.dryRun) {
@@ -241,11 +267,18 @@ async function writePluginSettings(
   // Only a mode write is a session default; an accent or currency save is not, and would mislabel one.
   const modesChanged =
     !before ||
-    ['comboDefault', 'cavemanDefault', 'rtkDefault', 'ponytailDefault', 'pstackDefault', 'headroomDefault'].some(
-      (key) => before[key as keyof StoredSettings] !== values[key as keyof typeof values],
-    );
+    [
+      'comboDefault',
+      'cavemanDefault',
+      'rtkDefault',
+      'ponytailDefault',
+      'pstackDefault',
+      'headroomDefault',
+      'codegraphDefault',
+    ].some((key) => before[key as keyof StoredSettings] !== values[key as keyof typeof values]);
   if (modesChanged) recordActivity('mode', 'Session defaults saved', formatProfile(profile));
-  if (!options.quiet) console.log(`  [write] Session defaults in ${file}`);
+  // A report that collects prints this line in its own band; otherwise it prints here.
+  if (!options.quiet) (opts.report ?? console.log)('⚙️ Session defaults saved');
   await mirrorPonytailDefault(profile.ponytailDefault, options);
 }
 
@@ -256,6 +289,7 @@ export type HostDefaultField =
   | 'rtkDefault'
   | 'ponytailDefault'
   | 'pstackDefault'
+  | 'codegraphDefault'
   | 'headroomDefault';
 
 /** A host's own section wins over the shared defaults, and only the fields the request chose land in it, so a later shared change still reaches the agent. */
@@ -267,6 +301,7 @@ export async function saveHostDefaults(
 ): Promise<void> {
   const file = tersioSettingsFile();
   const before = parseStored(await readTextIfExists(file)) ?? {};
+  stripRetiredRoutingDefaults(before);
   const flat = before as Record<string, unknown>;
   const section: Record<string, string | boolean> = {};
   for (const field of new Set(fields)) {
@@ -298,12 +333,13 @@ export async function saveHostDefaults(
   // Claude's RTK hook is a settings entry, not a mode body, so the stored toggle has to move it.
   if (host === 'claude' && fields.includes('rtkDefault')) setClaudeRtkHook(profile.rtkDefault);
   recordActivity('mode', `Session defaults for ${host} saved`, formatProfile(profile));
-  if (!options.quiet) console.log(`  [write] Session defaults for ${host} in ${file}`);
+  // The shared write already said the file was saved; this line only adds which agent got its own section.
+  if (!options.quiet && verbose) console.log(`  ⚙️ Session defaults saved for ${host}`);
 }
 
 function formatProfile(profile: Profile): string {
   // A hand-set mode no longer matches its preset, so the label says custom instead of a level it lost.
-  return `combo=${comboLevelOf(profile)} (caveman=${profile.cavemanDefault} · rtk=${profile.rtkDefault ? 'on' : 'off'} · ponytail=${profile.ponytailDefault} · pstack=${profile.pstackDefault} · headroom=${profile.headroomDefault})`;
+  return `combo=${comboLevelOf(profile)} (caveman=${profile.cavemanDefault} · rtk=${profile.rtkDefault ? 'on' : 'off'} · ponytail=${profile.ponytailDefault} · pstack=${profile.pstackDefault} · headroom=${profile.headroomDefault}) · codegraph=${profile.codegraphDefault} · codegraph sync=${profile.codegraphSync}`;
 }
 
 /** The mode keys a harness exposes, in the order the status line prints them. */
@@ -314,6 +350,7 @@ export const CONFIG_KEYS = [
   'ponytailDefault',
   'pstackDefault',
   'headroomDefault',
+  'codegraphDefault',
 ] as const;
 type ConfigKey = (typeof CONFIG_KEYS)[number];
 const CONFIG_SETS: Partial<Record<ConfigKey, Set<string>>> = {
@@ -322,6 +359,7 @@ const CONFIG_SETS: Partial<Record<ConfigKey, Set<string>>> = {
   ponytailDefault: PONYTAIL_DEFAULTS,
   pstackDefault: PSTACK_DEFAULTS,
   headroomDefault: HEADROOM_DEFAULTS,
+  codegraphDefault: CODEGRAPH_DEFAULTS,
 };
 
 /** Each mode's effective value and its source: this agent's section, the shared store, the default, or an invalid raw value. */
@@ -384,9 +422,10 @@ export function formatCliStatus(profile: Profile): string {
     rtk === 'off' &&
     profile.ponytailDefault === 'off' &&
     profile.pstackDefault === 'off' &&
-    profile.headroomDefault === 'off'
+    profile.headroomDefault === 'off' &&
+    profile.codegraphDefault === 'off'
   )
     return '🧩 OFF';
   const label = level === 'off' || level === 'custom' ? 'CUSTOM' : level.toUpperCase();
-  return `🧩 ${label} | 🪨 caveman:${profile.cavemanDefault.toUpperCase()} | 🗜️ rtk:${rtk.toUpperCase()} | 🍃 headroom:${profile.headroomDefault.toUpperCase()} | 🧠 ponytail:${profile.ponytailDefault.toUpperCase()} | 🥔 pstack:${profile.pstackDefault.toUpperCase()}`;
+  return `🧩 ${label} | 🪨 caveman:${profile.cavemanDefault.toUpperCase()} | 🗜️ rtk:${rtk.toUpperCase()} | 🍃 headroom:${profile.headroomDefault.toUpperCase()} | 🧠 ponytail:${profile.ponytailDefault.toUpperCase()} | 🥔 pstack:${profile.pstackDefault.toUpperCase()} | 🕸️ codegraph:${profile.codegraphDefault.toUpperCase()}`;
 }

@@ -3,12 +3,13 @@
 
 import fs, { realpathSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { HOST_CAPS, hostCap } from './host-caps.ts';
 import { stripJsonComments } from './headroom-routing.ts';
 import { findTopLevelKey, spliceNestedKey, spliceTopLevelKey } from './jsonc-edit.ts';
+import { findPackageRoot, resolveHostBinary } from './utils.ts';
 
 export { spliceTopLevelKey } from './jsonc-edit.ts';
-import { resolveHostBinary } from './utils.ts';
 
 const SERVER = 'tersio';
 const IS_WINDOWS = process.platform === 'win32';
@@ -48,6 +49,16 @@ function bunLaunch(bin: string): { command: string; args: string[] } | null {
  * the bare name stays the fallback so a moved install still starts.
  */
 function launch(): { command: string; args: string[] } {
+  const bun = resolveHostBinary(IS_WINDOWS ? 'bun.exe' : 'bun');
+  if (bun) {
+    try {
+      const root = findPackageRoot(path.dirname(fileURLToPath(import.meta.url)));
+      const source = path.join(root, 'tersio.ts');
+      if (fs.existsSync(source)) return { command: bun, args: [source, 'mcp'] };
+    } catch {
+      /* a copied extension tree may have no package manifest */
+    }
+  }
   const bin = resolveHostBinary('tersio');
   if (bin) {
     const underBun = bunLaunch(bin);

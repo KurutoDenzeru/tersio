@@ -75,7 +75,29 @@ flowchart LR
 - **History survives schema changes.** A new column backfills in place. An additive change never forces a rebuild from rotated transcripts.
 - **Agent files stay agent-owned.** Tersio reads them and never writes to them. Reset statistics writes a watermark, not a delete.
 - **Some facts stay with their source.** The omp quota view reads omp's own database. A trace reads the session file, because the store keeps facts, not message bodies.
+- **Per-request savings have a defined baseline.** Requests and the request drawer compare the recorded API-equivalent cost with the same request's cache-read tokens priced at the full input rate. Output and cache-write costs stay unchanged, so this is a cache-read discount estimate, not a reconstruction of an uncompressed prompt or a provider invoice. Unknown model rates have no comparison; zero-cost requests never receive hypothetical savings. Headroom's aggregate savings are not attributed to individual requests without a matching record.
 - **One activity log, two writers.** The CLI and the dashboard append to `~/.tersio/activity.jsonl`, so a terminal install appears on the Logs page.
+
+## CodeGraph
+
+CodeGraph is the code map Tersio installs. It reads your project once, remembers every name, who calls it, and what it depends on, and keeps that map current while you work. The agent then asks what a change touches instead of reading whole files.
+
+```mermaid
+flowchart LR
+  PKG["official package<br/>one download per machine"] --> HELPER["helper program<br/>watches and answers"]
+  FILES["your files"] -->|edits| HELPER
+  HELPER --> MAP["project map<br/>.codegraph/"]
+  ASK["agent · CLI · dashboard"] -->|what does this change touch?| HELPER
+```
+
+- **One download per machine, not per project.** Tersio fetches the official package for your computer, checks that it works, and keeps it under `~/.tersio/codegraph/bundles`. A copy you installed yourself stays where it is.
+- **The heavy work stays out of the agent.** A helper program owns the map and the file watching, so the agent's own runtime never carries the parsing code. When a session closes, its helper closes with it.
+- **A session can install it in the background.** The first session that needs it fetches the package and builds the map without a prompt.
+- **Update and uninstall are yours to ask for.** `tersio update` compares the installed package with npm and installs a newer one. Uninstalling Tersio removes the Tersio files but leaves the downloaded package and your project maps in place.
+- **One switch per agent, one timer for all.** OMP, pi, PiG, and OpenCode get the map by default; Codex, Claude Code, and DeepSeek Harness reach it through Tersio's MCP server instead. The interval is shared: live watches files, the timers check on a clock, manual waits until you ask.
+- **Any harness can start it.** The MCP tool installs the missing package once on first use, so a machine with only Codex or Claude Code still gets the map. Codex keeps an existing map fresh at each prompt; Claude Code and DeepSeek Harness read what the extension hosts, the CLI, or the dashboard built, and sync on request.
+- **The dashboard touches only its own project.** Indexing and sync accept requests from this machine for the folder the dashboard runs in.
+- **Tersio adds no language rules of its own.** Which languages the map reads is the upstream package's job.
 
 ## Headroom
 
@@ -93,13 +115,15 @@ flowchart LR
 
 - **Only Tersio's supported agents appear.** Extra Headroom tools never enter the drawer. A present agent without its Tersio tree reads as `Tersio missing` and offers Install. An absent agent reads as `not installed` with no switch.
 - **The runtime comes before the switch.** Tersio starts headroom's saved deployment, or headroom's proxy when none exists, and waits for health. Dashboard start restores an enabled runtime. The Tools page also carries a Start Headroom action.
-- **Oh My Pi, OpenCode, and Codex use Headroom's writers.** Pi, PiG, and DeepSeek Harness use Tersio's route writer. It changes only the active provider endpoint, saves that URL in the state row, and puts it back on off. Codex delegates to `headroom init -g codex` and `headroom unwrap codex`.
+- **Each writer owns its undo.** OMP provider overrides use Tersio's upstream markers. Pi, PiG, OpenCode, and DeepSeek Harness use Tersio's native route records. Codex and Claude Code retain their Headroom-specific setup paths.
 - **A row states its own path.** A switch means a durable setup Tersio manages. `headroom install` means headroom's installer owns it. `routed by hand` means an endpoint Tersio found but cannot undo. `session only` means no durable setup exists.
-- **One action per agent.** A route is written once and repaired if a third-party writer replaces it; there is no per-session wrap and no ledger of wrapped tools. Headroom's own durable writer still owns omp and opencode, whose providers live in its block.
-- **The route outlives the process, so the session starts it.** A config file still points at the proxy after a reboot; the proxy does not, so the headroom extension starts it at session start and the dashboard restores it on boot.
+- **No wrapper process per session.** Runtime hooks update model metadata rather than launching `headroom wrap` for every agent.
+- **Persistent routes keep their service.** Session startup and each provider attempt ensure proxy readiness. Closing an agent releases its lease without stopping a process that configured endpoints still reference. An existing healthy shared proxy is never restarted to change another provider's upstream.
 - **Undo belongs to the writer.** Headroom's own writers use `headroom unwrap`; Tersio's route writer restores the endpoint it saved.
-- **The block requires a routed model.** Tersio reads omp's default `modelRoles` entry, OpenCode's active model, Pi's default provider, and DeepSeek Harness's profile provider. It resolves the provider base URL and keeps the block out when the model does not reach the proxy.
-- **A local gateway is routed, not guessed.** When omp's OpenAI provider points at a loopback gateway, Tersio records the original URL in a marker, points the provider at the proxy, and starts Headroom with `--openai-api-url` set to that gateway. `headroom unwrap omp` restores the backup.
+- **The live model owns the request.** OMP hooks read `ctx.models.current()` or the request's `ctx.model`, including manual switches and native fallback events. `pi.setModel` applies the proxy endpoint and composed headers while preserving other metadata and thinking settings. An unknown original upstream or an unavailable proxy stops preparation instead of merely reporting an unrouted model.
+- **Upstreams are request-local.** `x-headroom-base-url` selects the original provider without repointing the shared process. OpenAI uses the proxy's `/v1` base; Anthropic and Gemini CLI use its root. Existing authentication headers and asynchronous header resolvers survive the override. Private upstreams require Headroom's explicit upstream allowlist.
+- **Codex OAuth is not an OpenAI API key.** OMP's `openai-codex-responses` uses the proxy's `/v1/codex/responses` alias. Headroom recognizes the ChatGPT account header or OAuth claim and selects `chatgpt.com/backend-api/codex/responses` independently of the configured OpenAI upstream. CommandCode therefore keeps its own upstream when the session switches to Codex.
+- **Original endpoints are recoverable.** Tersio reads both legacy YAML-key and comment upstream markers, preserves model-specific URLs separately, and restores only endpoints still pointing at its proxy. Catalog recovery prefers the exact provider deterministically and excludes proxy URLs as upstreams.
 - **The proxy is started directly, never through `install start`.** That command keeps a second Python process alive for the life of the proxy, about 82MB to forward one start. Tersio reuses the saved deployment's flags and spawns `headroom proxy` itself; headroom's launcher is the fallback when the direct start does not answer.
 - **A built-in provider is read, not guessed.** When the active model names a provider the agent keeps in its own catalog, Tersio takes the endpoint from that catalog: omp's `models.db` or Pi's `models-store.json`. The switch then routes the provider like any other, so a host with no block still gets one route, not a hand edit.
 - **The route record is the undo.** Tersio stores the file, provider, old URL, and written URL. The off switch restores the old URL only while the file still holds the written URL, so a newer edit survives.

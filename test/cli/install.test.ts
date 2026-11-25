@@ -1,8 +1,8 @@
 import { expect, test } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
-  existsSync,
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -16,8 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { ensureExtensionInConfig, normalizeExtensionsKey, removeExtensionFromConfig } from '../../cli/common.ts';
-import { GENERATED_TREE_FILES, TREE_FILES, sourcePath, treeFilesFor } from '../../cli/manifest.ts';
-import { PACKAGE_VERSION } from '../../cli/common.ts';
+import { GENERATED_TREE_FILES, sourcePath, TREE_FILES, treeFilesFor } from '../../cli/manifest.ts';
 import {
   readCavemanDefault,
   readComboDefault,
@@ -26,8 +25,8 @@ import {
   saveComboSetup,
   saveModeState,
 } from '../../extensions/shared/plugin-settings.ts';
-import { saveHostDefaults, storedProfileSync } from '../../cli/profile.ts';
 import type { HostDefaultField } from '../../cli/profile.ts';
+import { saveHostDefaults, storedProfileSync } from '../../cli/profile.ts';
 import { readUsageDb, syncUsageDb } from '../../extensions/shared/usage-store.ts';
 import { ruleBodyProblem } from '../../extensions/shared/utils.ts';
 import { sqliteExec } from '../../extensions/shared/sqlite.ts';
@@ -199,8 +198,8 @@ test('installer accepts session-default flags and reports them', () => {
   const result = run('install', '--dry-run', '--yes', '--combo-default', 'lite');
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/Defaults: combo=lite/);
-  expect(result.stdout).toMatch(/RTK session — install session mode/);
-  expect(result.stdout).toMatch(/Tersio commands — install \/tersio root command/);
+  expect(result.stdout).toMatch(/Shared session bridge/);
+  expect(result.stdout).toMatch(/\/tersio command/);
 
   // A scripted flag written before the rename still lands on the lite preset.
   const retired = run('install', '--dry-run', '--yes', '--combo-default', 'medium');
@@ -236,9 +235,9 @@ test('installer rejects removed project/both scopes', () => {
 test('installer dry-run installs every user-scope extension', () => {
   const result = run('install', '--dry-run', '--yes');
   expect(result.status, result.stderr).toBe(0);
-  expect(result.stdout).toMatch(/RTK session — install session mode/);
-  expect(result.stdout).toMatch(/Caveman — install session mode and rule bodies/);
-  expect(result.stdout).toMatch(/Tersio commands — install \/tersio root command/);
+  expect(result.stdout).toMatch(/Shared session bridge/);
+  expect(result.stdout).toMatch(/Caveman — session mode and rule bodies/);
+  expect(result.stdout).toMatch(/\/tersio command/);
   expect(result.stdout).not.toMatch(/mode reinforcement/i);
 });
 
@@ -281,6 +280,7 @@ test('package manifest declares always-on extensions plus updater feature and se
     './extensions/rtk/filter.ts',
     './extensions/combo/index.ts',
     './extensions/commands/index.ts',
+    './extensions/codegraph/index.ts',
   ]);
   const features = manifest.omp?.features ?? {};
   expect(Object.keys(features)).toEqual(['updater']);
@@ -349,6 +349,28 @@ test('a host save writes only the chosen fields, and one equal to the shared fal
     const after = JSON.parse(readFileSync(path.join(home, '.tersio', 'settings.json'), 'utf8')) as Record<string, any>;
     expect(after.hosts.pi.rtkDefault).toBeUndefined();
     expect(after.hosts.pi).toEqual({ comboDefault: 'max', cavemanDefault: 'ultra', ponytailDefault: 'ultra' });
+  });
+});
+
+test('saving host defaults removes retired routing settings without changing other hosts', async () => {
+  await withHome(async (home) => {
+    writeLock(home, {
+      routingDefault: 'on',
+      headroomDefault: 'on',
+      hosts: {
+        omp: { routingDefault: 'on', headroomDefault: 'on' },
+        pi: { routingDefault: 'off', codegraphDefault: 'off' },
+      },
+    });
+    await saveHostDefaults('pi', ['codegraphDefault'], storedProfileSync('pi'), { quiet: true });
+    const saved: unknown = JSON.parse(readFileSync(path.join(home, '.tersio', 'settings.json'), 'utf8'));
+    expect(saved).toEqual({
+      headroomDefault: 'on',
+      hosts: {
+        omp: { headroomDefault: 'on' },
+        pi: { codegraphDefault: 'off' },
+      },
+    });
   });
 });
 
@@ -454,7 +476,7 @@ function runOmpInstall(home: string, extraEnv: Record<string, string>, ...args: 
     cwd: root,
     encoding: 'utf8',
     timeout: 30000,
-    env: cliEnv(home, extraEnv),
+    env: cliEnv(home, { PI_OFFLINE: '1', ...extraEnv }),
   });
 }
 
@@ -512,7 +534,7 @@ test('dry run reports the retired copies and removes nothing', () => {
     const before = readdirSync(agentExtDir(home)).toSorted();
     const result = runOmpInstall(home, {}, '--dry-run', '--yes', '--verbose');
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Add-ons load from: the OMP plugin manifest/);
+    expect(result.stdout).not.toMatch(/Add-ons load from/);
     expect(result.stdout).toMatch(/Retired agent copies — remove/);
     // The manifest decides what omp loads, so the install reports the manifest write it would make.
     expect(result.stdout).toMatch(/would write .*@krtclcdy[\\/]tersio[\\/]package\.json/);
@@ -598,7 +620,7 @@ test('without the plugin the agent tree is the fallback and keeps its copies', (
   try {
     const result = runOmpInstall(home, noPackageManagers(home), '--yes');
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Add-ons load from: the agent tree/);
+    expect(result.stdout).toMatch(/plugin registration failed — add-ons load from the agent tree/);
     for (const dir of RETIRED) {
       expect(existsSync(path.join(agentExtDir(home), dir)), `${dir} kept as the fallback`).toBe(true);
     }
@@ -760,7 +782,7 @@ test('pi dry-run previews the local Ponytail package without writing', () => {
       timeout: 60000,
       env: offline(dir),
     });
-    expect(out).toMatch(/Ponytail — write the local pi package/);
+    expect(out).toMatch(/Ponytail — local pi package/);
     expect(readFileSync(path.join(dir, '.pi', 'agent', 'settings.json'), 'utf8')).toBe(before);
   } finally {
     rmTree(dir);
@@ -834,7 +856,8 @@ test('opencode install registers one plugin and drops the rtk entry', () => {
       expect.stringMatching(/[\\/]opencode[\\/]plugins[\\/]tersio$/),
     ]);
     expect(existsSync(path.join(dir, '.config', 'opencode', 'plugins', 'rtk.ts'))).toBe(false);
-    expect(out).toMatch(/no separate entry/);
+    // The plugin owns the rewrite, so the line states the binding and nothing about a separate entry.
+    expect(out).toMatch(/RTK — bound to OpenCode/);
     expectTreeByteIdentical(path.join(dir, '.config', 'opencode', 'plugins', 'tersio'), treeFilesFor('opencode'));
   } finally {
     rmTree(dir);
@@ -1792,6 +1815,7 @@ test.skipIf(process.platform === 'win32')(
           env: {
             ...cliEnv(home),
             ...DEAD_ENDPOINTS,
+            PI_OFFLINE: '1',
             TERSIO_HEADROOM_WAIT_MS: '500',
             PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ''}`,
           },
@@ -1833,6 +1857,7 @@ test.skipIf(isWindows())(
         encoding: 'utf8',
         env: cliEnv(home, {
           ...DEAD_ENDPOINTS,
+          PI_OFFLINE: '1',
           TERSIO_HEADROOM_BIN: headroom,
           PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ''}`,
         }),
@@ -1858,38 +1883,43 @@ const PI_LOAD_ENTRIES = [
   '.pi/agent/ponytail/pi-extension/index.ts',
 ] as const;
 
-test.skipIf(!hasBun())('every pi extension entry loads from an installed tree alone', () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-pi-load-'));
-  try {
-    const install = spawnSync(process.execPath, [installer, 'install', '--host', 'pi', '--yes'], {
-      cwd: root,
-      encoding: 'utf8',
-      env: cliEnv(home),
-      timeout: 120_000,
-    });
-    expect(install.status, install.stderr).toBe(0);
+test.skipIf(!hasBun())(
+  'every pi extension entry loads from an installed tree alone',
+  () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-pi-load-'));
+    try {
+      const install = spawnSync(process.execPath, [installer, 'install', '--host', 'pi', '--yes'], {
+        cwd: root,
+        encoding: 'utf8',
+        // A load test must not wait on npm: the CodeGraph bundle is optional and downloads separately.
+        env: cliEnv(home, { ...DEAD_ENDPOINTS, PI_OFFLINE: '1' }),
+        timeout: 120_000,
+      });
+      expect(install.status, install.stderr).toBe(0);
 
-    // Load each entry the way pi's jiti loader does, from the copied tree and nothing beside it.
-    const script = [
-      'const targets = JSON.parse(process.argv[1]);',
-      'for (const target of targets) {',
-      '  try { await import(target); }',
-      '  catch (error) {',
-      '    console.log(`${target}: ${error.message.split("\\n")[0]}`);',
-      '    process.exitCode = 1;',
-      '  }',
-      '}',
-    ].join('\n');
-    const targets = PI_LOAD_ENTRIES.map((rel) => path.join(home, rel));
-    const load = spawnSync('bun', ['-e', script, JSON.stringify(targets)], {
-      encoding: 'utf8',
-      env: cliEnv(home),
-      timeout: 120_000,
-    });
-    // A failure names the entry and the message, so the report says which import broke.
-    expect(load.stdout.trim(), load.stderr).toBe('');
-    expect(load.status, load.stderr).toBe(0);
-  } finally {
-    rmTree(home);
-  }
-}, 240_000);
+      // Load each entry the way pi's jiti loader does, from the copied tree and nothing beside it.
+      const script = [
+        'const targets = JSON.parse(process.argv[1]);',
+        'for (const target of targets) {',
+        '  try { await import(target); }',
+        '  catch (error) {',
+        '    console.log(`${target}: ${error.message.split("\\n")[0]}`);',
+        '    process.exitCode = 1;',
+        '  }',
+        '}',
+      ].join('\n');
+      const targets = PI_LOAD_ENTRIES.map((rel) => path.join(home, rel));
+      const load = spawnSync('bun', ['-e', script, JSON.stringify(targets)], {
+        encoding: 'utf8',
+        env: cliEnv(home),
+        timeout: 120_000,
+      });
+      // A failure names the entry and the message, so the report says which import broke.
+      expect(load.stdout.trim(), load.stderr).toBe('');
+      expect(load.status, load.stderr).toBe(0);
+    } finally {
+      rmTree(home);
+    }
+  },
+  240_000,
+);

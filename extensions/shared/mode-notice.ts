@@ -7,6 +7,7 @@ export const MODE_GLYPHS = {
   ponytail: '🧠',
   pstack: '🥔',
   headroom: '🍃',
+  codegraph: '🕸️',
 } as const;
 
 export interface ModeSnapshot {
@@ -15,6 +16,7 @@ export interface ModeSnapshot {
   ponytail: string;
   pstack: string | boolean;
   headroom: string;
+  codegraph: string;
 }
 
 /** One line naming every mode, so a desktop host and a status bar cannot disagree. */
@@ -26,6 +28,7 @@ export function formatModeLine(modes: ModeSnapshot): string {
     `${MODE_GLYPHS.ponytail} ponytail=${modes.ponytail}`,
     `${MODE_GLYPHS.pstack} pstack=${pstack}`,
     `${MODE_GLYPHS.headroom} headroom=${modes.headroom}`,
+    `${MODE_GLYPHS.codegraph} codegraph=${modes.codegraph}`,
   ].join(' · ');
 }
 

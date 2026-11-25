@@ -1,12 +1,13 @@
 import { afterAll, afterEach, expect, test } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import cavemanSessionExtension from '../../extensions/caveman/index.ts';
 import comboToggleExtension, { ponytailFallback } from '../../extensions/combo/index.ts';
 import pstackSessionExtension from '../../extensions/pstack/index.ts';
+import ponytailExtension from '../../extensions/ponytail/pi-extension/index.ts';
 import {
   deriveLevel,
   getSharedComboState,
@@ -681,6 +682,30 @@ test('pi with an upstream ponytail defers to it', async () => {
   }
 });
 
+test('Pi Ponytail follows mode changes written to the current session', async () => {
+  const entries: SessionEntry[] = [{ type: 'custom', customType: 'ponytail-mode', data: { mode: 'full' } }];
+  const handlers = new Map<string, Parameters<Parameters<typeof ponytailExtension>[0]['on']>[1]>();
+  ponytailExtension({
+    appendEntry() {},
+    sendUserMessage() {},
+    registerCommand() {},
+    on(event, handler) {
+      handlers.set(event, handler);
+    },
+  });
+  const ctx = { sessionManager: { getBranch: () => entries } };
+  await handlers.get('session_start')!({}, ctx);
+  const sections: Record<string, string> = {};
+  await handlers.get('before_agent_start')!({ systemPromptOptions: { sections } }, ctx);
+  expect(sections.ponytail).toContain('PONYTAIL MODE ACTIVE — level: full');
+  entries.push({ type: 'custom', customType: 'ponytail-mode', data: { mode: 'off' } });
+  await handlers.get('before_agent_start')!({ systemPromptOptions: { sections } }, ctx);
+  expect(sections.ponytail).toBeUndefined();
+  entries.push({ type: 'custom', customType: 'ponytail-mode', data: { mode: 'ultra' } });
+  await handlers.get('before_agent_start')!({ systemPromptOptions: { sections } }, ctx);
+  expect(sections.ponytail).toContain('PONYTAIL MODE ACTIVE — level: ultra');
+});
+
 // The pstack rigor mode. Opt-in: no combo preset turns it on, and /pstack controls it on its own.
 const BODY = readFileSync(
   path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'extensions', 'pstack', 'rule.md'),
@@ -764,7 +789,7 @@ test('/pstack on reaches the prompt body and the footer names the mode', async (
   await pi.commands.get('pstack')!('on', ctx);
 
   expect(statuses.at(-1)).toBe(
-    '🧩 CUSTOM | 🪨 caveman:OFF | 🗜️ rtk:OFF | 🍃 headroom:OFF | 🧠 ponytail:OFF | 🥔 pstack:ON',
+    '🧩 CUSTOM | 🪨 caveman:OFF | 🗜️ rtk:OFF | 🍃 headroom:OFF | 🧠 ponytail:OFF | 🥔 pstack:ON | 🕸️ codegraph:OFF',
   );
   expect(await pstackInject(pi, ctx)).toContain(BODY);
 });
@@ -816,7 +841,7 @@ test('a combo preset leaves pstack where it was, so the level still matches its 
 
   expect(getSharedComboState().pstack).toBe('off');
   expect(statuses.at(-1)).toBe(
-    '🧩 BALANCED | 🪨 caveman:FULL | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:FULL | 🥔 pstack:OFF',
+    '🧩 BALANCED | 🪨 caveman:FULL | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:FULL | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
   );
 });
 
@@ -833,7 +858,7 @@ test('a combo preset keeps a pstack the session already had', async () => {
   expect(getSharedComboState().pstack).toBe('on');
   expect(getSharedComboState().level).toBe('lite');
   expect(statuses.at(-1)).toBe(
-    '🧩 LITE | 🪨 caveman:LITE | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:LITE | 🥔 pstack:ON',
+    '🧩 LITE | 🪨 caveman:LITE | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:LITE | 🥔 pstack:ON | 🕸️ codegraph:OFF',
   );
 });
 
@@ -883,22 +908,57 @@ test('a host section feeds the combo defaults this host starts from', async () =
     await handlers.get('session_start')!({}, ctx);
     // omp reads its own section: max, not the shared lite.
     expect(statuses.get('tersio')).toBe(
-      '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF',
+      '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF | 🕸️ codegraph:ON',
     );
+  });
+});
+test('a host-scoped mode override restores without shared per-mode defaults', async () => {
+  await withHome(async (home) => {
+    mkdirSync(path.join(home, '.tersio'), { recursive: true });
+    writeFileSync(
+      path.join(home, '.tersio', 'settings.json'),
+      JSON.stringify({ hosts: { omp: { cavemanDefault: 'lite' } } }),
+      'utf8',
+    );
+    resetSharedComboState();
+    const entries: SessionEntry[] = [];
+    const combo = instantiate(comboToggleExtension, entries);
+    const { statuses, ctx } = context(entries);
+
+    await combo.handlers.get('session_start')!({}, ctx);
+
+    expect(statuses.at(-1)).toContain('caveman:LITE');
+    expect(entries).toContainEqual({
+      type: 'custom',
+      customType: 'caveman-mode',
+      data: { mode: 'lite' },
+    });
   });
 });
 
 test('deriveLevel maps every preset back to its level, including balanced', () => {
-  expect(deriveLevel({ caveman: 'off', rtk: 'off', ponytail: 'off', pstack: 'off', headroom: 'off' })).toBe('off');
-  expect(deriveLevel({ caveman: 'lite', rtk: 'on', ponytail: 'lite', pstack: 'on', headroom: 'off' })).toBe('lite');
-  expect(deriveLevel({ caveman: 'full', rtk: 'on', ponytail: 'full', pstack: 'on', headroom: 'off' })).toBe('balanced');
-  expect(deriveLevel({ caveman: 'ultra', rtk: 'on', ponytail: 'ultra', pstack: 'on', headroom: 'off' })).toBe('max');
+  expect(
+    deriveLevel({ caveman: 'off', rtk: 'off', ponytail: 'off', pstack: 'off', headroom: 'off', codegraph: 'off' }),
+  ).toBe('off');
+  expect(
+    deriveLevel({ caveman: 'lite', rtk: 'on', ponytail: 'lite', pstack: 'on', headroom: 'off', codegraph: 'off' }),
+  ).toBe('lite');
+  expect(
+    deriveLevel({ caveman: 'full', rtk: 'on', ponytail: 'full', pstack: 'on', headroom: 'off', codegraph: 'off' }),
+  ).toBe('balanced');
+  expect(
+    deriveLevel({ caveman: 'ultra', rtk: 'on', ponytail: 'ultra', pstack: 'on', headroom: 'off', codegraph: 'off' }),
+  ).toBe('max');
 });
 
 // pstack is opt-in, so it neither makes nor breaks a preset.
 test('deriveLevel ignores pstack in both directions', () => {
-  expect(deriveLevel({ caveman: 'ultra', rtk: 'on', ponytail: 'ultra', pstack: 'off', headroom: 'off' })).toBe('max');
-  expect(deriveLevel({ caveman: 'off', rtk: 'off', ponytail: 'off', pstack: 'on', headroom: 'off' })).toBe('off');
+  expect(
+    deriveLevel({ caveman: 'ultra', rtk: 'on', ponytail: 'ultra', pstack: 'off', headroom: 'off', codegraph: 'off' }),
+  ).toBe('max');
+  expect(
+    deriveLevel({ caveman: 'off', rtk: 'off', ponytail: 'off', pstack: 'on', headroom: 'off', codegraph: 'off' }),
+  ).toBe('off');
 });
 
 test('the retired `medium` name still resolves to lite', () => {
@@ -909,13 +969,19 @@ test('the retired `medium` name still resolves to lite', () => {
 });
 
 test('deriveLevel returns custom for mixed modes', () => {
-  expect(deriveLevel({ caveman: 'full', rtk: 'off', ponytail: 'full', pstack: 'off', headroom: 'off' })).toBe('custom');
+  expect(
+    deriveLevel({ caveman: 'full', rtk: 'off', ponytail: 'full', pstack: 'off', headroom: 'off', codegraph: 'off' }),
+  ).toBe('custom');
 });
 
 // A hand-changed mode still leaves every preset behind. pstack is not a preset mode, so it never does.
 test('deriveLevel returns custom when a preset mode is changed by hand', () => {
-  expect(deriveLevel({ caveman: 'full', rtk: 'on', ponytail: 'lite', pstack: 'off', headroom: 'off' })).toBe('custom');
-  expect(deriveLevel({ caveman: 'lite', rtk: 'off', ponytail: 'lite', pstack: 'on', headroom: 'off' })).toBe('custom');
+  expect(
+    deriveLevel({ caveman: 'full', rtk: 'on', ponytail: 'lite', pstack: 'off', headroom: 'off', codegraph: 'off' }),
+  ).toBe('custom');
+  expect(
+    deriveLevel({ caveman: 'lite', rtk: 'off', ponytail: 'lite', pstack: 'on', headroom: 'off', codegraph: 'off' }),
+  ).toBe('custom');
 });
 
 test('isComboPresetActive is true for presets, false for off', () => {

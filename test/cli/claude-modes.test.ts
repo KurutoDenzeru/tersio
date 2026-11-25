@@ -1,5 +1,5 @@
 // Guards the slash-command output: one line, no write path, and a combo label that admits a hand-set mode.
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -74,7 +74,56 @@ describe('Claude mode output', () => {
       console.log = original;
     }
     expect(lines).toEqual([
-      'Session defaults for claude saved: combo=custom (caveman=full · rtk=on · ponytail=lite · pstack=off · headroom=on)',
+      'Session defaults for claude saved: combo=custom (caveman=full · rtk=on · ponytail=lite · pstack=off · headroom=on) · codegraph=on · codegraph sync=live',
     ]);
   });
+});
+test('CodeGraph mode is limited to hosts that load its extension', async () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-codegraph-hosts-'));
+  process.env.HOME = home;
+  const tersioHome = path.join(home, '.tersio');
+  process.env.TERSIO_HOME = tersioHome;
+  const settingsFile = path.join(tersioHome, 'settings.json');
+  const oldLog = console.log;
+  const oldError = console.error;
+  const oldExitCode = process.exitCode;
+  const errors: string[] = [];
+  console.log = () => {};
+  console.error = (...args: unknown[]) => errors.push(args.map(String).join(' '));
+  try {
+    mkdirSync(tersioHome, { recursive: true });
+    for (const host of ['omp', 'pi', 'pig', 'opencode']) {
+      writeFileSync(settingsFile, '{}', 'utf8');
+      process.exitCode = 0;
+      await runModes(['codegraph', 'off', '--host', host]);
+      expect(process.exitCode).toBe(0);
+      expect(JSON.parse(readFileSync(settingsFile, 'utf8'))).toMatchObject({
+        hosts: { [host]: { codegraphDefault: 'off' } },
+      });
+    }
+    // Codex and DeepSeek Harness reach CodeGraph through the flag or the MCP tool; only Claude has no surface.
+    for (const host of ['claude']) {
+      writeFileSync(settingsFile, '{}', 'utf8');
+      errors.length = 0;
+      process.exitCode = 0;
+      await runModes(['codegraph', 'on', '--host', host]);
+      expect(process.exitCode).toBe(1);
+      expect(errors).toEqual([`[fail] codegraph is not supported for ${host}`]);
+      expect(readFileSync(settingsFile, 'utf8')).toBe('{}');
+    }
+
+    // Codex loads no extension, but its edit-sync hook rides the flag, so the mode reaches it.
+    writeFileSync(settingsFile, '{}', 'utf8');
+    process.exitCode = 0;
+    await runModes(['codegraph', 'on', '--host', 'codex']);
+    expect(process.exitCode).toBe(0);
+    expect(JSON.parse(readFileSync(settingsFile, 'utf8'))).toMatchObject({
+      hosts: { codex: { codegraphDefault: 'on' } },
+    });
+  } finally {
+    console.log = oldLog;
+    console.error = oldError;
+    process.exitCode = oldExitCode;
+    rmSync(home, { recursive: true, force: true });
+  }
 });

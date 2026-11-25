@@ -1,10 +1,20 @@
 // Headroom's runtime, not its configuration. A durable switch points an agent at the local proxy,
 // so the proxy has to answer before the switch is written; otherwise the agent talks to a dead port.
 import { execFile, execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { headroomProxyPort, headroomProxyUrl } from './headroom-proxy.ts';
+import {
+  HEADROOM_UPSTREAM_ENV,
+  HEADROOM_UPSTREAM_FLAG,
+  headroomProxyPort,
+  headroomProxyUrl,
+  type HeadroomUpstreams,
+  UPSTREAM_DIALECTS,
+  upstreamEntries,
+  upstreamMismatches,
+} from './headroom-proxy.ts';
 import { cacheGet, cachePut } from './cache-store.ts';
 import { homeDir, resolveHeadroomBinary, tersioHome } from './utils.ts';
 
@@ -59,17 +69,41 @@ export function headroomProxyPids(port?: number): number[] {
   return port === undefined ? pids : pids.filter((pid) => proxyPortOf(pid) === port);
 }
 
+/** The value of one flag in an argv, in `--flag value` or `--flag=value` form, or undefined when absent. */
+function flagValue(args: string[], flag: string): string | undefined {
+  const at = args.findIndex((arg) => arg === flag || arg.startsWith(`${flag}=`));
+  if (at < 0) return undefined;
+  return args[at] === flag ? args[at + 1] : args[at]!.slice(flag.length + 1);
+}
+
 /**
- * Every live `headroom proxy` process, whatever port it serves. `pgrep -f` matches any command line
- * that merely mentions the pattern, so a shell running `tersio doctor` counted as a proxy; the
- * interpreter check drops those. A real proxy always runs under python.
+ * The upstreams the running proxy was started with, read from its live argv: the flags it was given,
+ * not the saved deployment. A dialect whose flag is absent is left out, which means headroom's public
+ * default. Null when no proxy on this port can be read, so nothing about it is proven.
+ */
+export function liveHeadroomUpstreams(port: number = headroomProxyPort()): HeadroomUpstreams | null {
+  const pid = headroomProxyPids(port)[0];
+  if (pid === undefined) return null;
+  const argv = proxyArgvOf(pid);
+  if (argv === null) return null;
+  const args = argv.split(/\s+/);
+  const live: HeadroomUpstreams = {};
+  for (const dialect of UPSTREAM_DIALECTS) {
+    const url = flagValue(args, HEADROOM_UPSTREAM_FLAG[dialect]);
+    if (url) live[dialect] = url;
+  }
+  return live;
+}
+
+/**
+ * Every live `headroom proxy` process, whatever port it serves. `pgrep -f` matches both the
+ * console-script launcher and `python -m headroom.cli`; the interpreter check excludes shells.
  */
 function rawProxyPids(): number[] {
   try {
     if (process.platform === 'win32') {
-      // No pgrep, and tasklist prints no command line; PowerShell can match on it.
       const script =
-        "Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'python*' -and $_.CommandLine -like '*headroom.cli proxy*' } | ForEach-Object { $_.ProcessId }";
+        "Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'python*' -and $_.CommandLine -like '*headroom* proxy*' } | ForEach-Object { $_.ProcessId }";
       return parsePids(
         execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], {
           encoding: 'utf8',
@@ -78,37 +112,36 @@ function rawProxyPids(): number[] {
         }),
       );
     }
-    return parsePids(execFileSync('pgrep', ['-f', 'headroom.cli proxy'], { encoding: 'utf8', timeout: 3_000 })).filter(
-      isPythonProcess,
-    );
+    return parsePids(
+      execFileSync('pgrep', ['-f', 'headroom(\\.cli)? proxy'], { encoding: 'utf8', timeout: 3_000 }),
+    ).filter(isPythonProcess);
   } catch {
     return [];
   }
 }
 
-/** True when the process is a Python interpreter, so a shell that quotes the pattern is excluded. */
+/** Match the Python launcher in argv: `ps comm` reports `headroom` for console-script processes. */
 function isPythonProcess(pid: number): boolean {
+  const argv = proxyArgvOf(pid);
+  return argv !== null && /(?:^|\/)python(?:\d+(?:\.\d+)*)?(?=\s)/i.test(argv) && /headroom(?:\.cli)? proxy/.test(argv);
+}
+
+/** The argv of one proxy process, or null when this platform will not say. */
+function proxyArgvOf(pid: number): string | null {
   try {
-    const comm = execFileSync('ps', ['-o', 'comm=', '-p', String(pid)], { encoding: 'utf8', timeout: 3_000 }).trim();
-    return /python/i.test(comm);
+    return process.platform === 'linux'
+      ? readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\u0000').join(' ')
+      : execFileSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8', timeout: 3_000 });
   } catch {
-    return false;
+    return null;
   }
 }
 
 /** The `--port` a proxy process was started with, or null when its argv does not say. */
 function proxyPortOf(pid: number): number | null {
-  try {
-    const argv =
-      process.platform === 'linux'
-        ? readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\u0000').join(' ')
-        : execFileSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8', timeout: 3_000 });
-    const match = argv.match(/--port[\s=]+(\d+)/);
-    const port = match ? Number(match[1]) : NaN;
-    return Number.isFinite(port) && port > 0 ? port : null;
-  } catch {
-    return null;
-  }
+  const match = proxyArgvOf(pid)?.match(/--port[\s=]+(\d+)/);
+  const port = match ? Number(match[1]) : NaN;
+  return Number.isFinite(port) && port > 0 ? port : null;
 }
 
 /** Stop proxies that answer nowhere useful: first politely, then for real. */
@@ -269,7 +302,7 @@ function withDefaultFlag(args: string[], flag: string, value: string, unless: re
 }
 
 /** Reuse the deployment's own flags, so a fallback start keeps its mode, backend, and limits. */
-export function proxyArgsForDeployment(proxyArgs: string[], port: number, openAiTarget?: string | null): string[] {
+export function proxyArgsForDeployment(proxyArgs: string[], port: number, upstreams: HeadroomUpstreams = {}): string[] {
   let base = proxyArgs.length ? [...proxyArgs] : ['--host', '127.0.0.1', '--port', String(port)];
   for (let i = 0; i < base.length; i += 1) {
     if (base[i] === '--port' && i + 1 < base.length) base[i + 1] = String(port);
@@ -277,22 +310,26 @@ export function proxyArgsForDeployment(proxyArgs: string[], port: number, openAi
   }
   if (!base.some((arg) => arg === '--port' || arg.startsWith('--port='))) base.push('--port', String(port));
   if (!base.some((arg) => arg === '--host' || arg.startsWith('--host='))) base.push('--host', '127.0.0.1');
-  if (openAiTarget) base = withFlag(base, '--openai-api-url', openAiTarget);
+  for (const [dialect, url] of upstreamEntries(upstreams)) base = withFlag(base, HEADROOM_UPSTREAM_FLAG[dialect], url);
   for (const bound of HEADROOM_MEMORY_DEFAULTS) base = withDefaultFlag(base, bound.flag, bound.value, bound.unless);
   return base;
 }
 
-/** Writes the gateway into a saved deployment, so a restart routes OpenAI traffic to it. */
-function configureDeployment(entry: DeploymentProfile, target: string): boolean {
+/** Writes each requested upstream into a saved deployment, so a restart routes that dialect to it. */
+function configureDeployment(entry: DeploymentProfile, upstreams: HeadroomUpstreams): boolean {
   try {
     const manifest = JSON.parse(readFileSync(entry.manifestFile, 'utf8')) as Record<string, unknown>;
     const before = JSON.stringify(manifest);
     const baseEnv =
       manifest.base_env && typeof manifest.base_env === 'object' ? (manifest.base_env as Record<string, string>) : {};
-    baseEnv.OPENAI_TARGET_API_URL = target;
+    let args = entry.proxyArgs.length ? entry.proxyArgs : [];
+    for (const [dialect, url] of upstreamEntries(upstreams)) {
+      baseEnv[HEADROOM_UPSTREAM_ENV[dialect]] = url;
+      args = withFlag(args, HEADROOM_UPSTREAM_FLAG[dialect], url);
+    }
     manifest.base_env = baseEnv;
-    manifest.proxy_args = withFlag(entry.proxyArgs.length ? entry.proxyArgs : [], '--openai-api-url', target);
-    entry.proxyArgs = manifest.proxy_args as string[];
+    manifest.proxy_args = args;
+    entry.proxyArgs = args;
     const after = JSON.stringify(manifest);
     if (before === after) return false;
     writeFileSync(entry.manifestFile, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
@@ -317,13 +354,13 @@ async function waitForRuntime(): Promise<boolean> {
  * start. The flags the saved deployment recorded are reused, so the runtime keeps its mode,
  * backend, and upstream.
  */
-async function startRuntime(bin: string, openAiTarget?: string | null): Promise<HeadroomRuntimeResult> {
+async function startRuntime(bin: string, upstreams: HeadroomUpstreams = {}): Promise<HeadroomRuntimeResult> {
   const port = headroomProxyPort();
   const profiles = deploymentProfiles(port);
-  if (openAiTarget) {
-    for (const entry of profiles) configureDeployment(entry, openAiTarget);
+  if (upstreamEntries(upstreams).length > 0) {
+    for (const entry of profiles) configureDeployment(entry, upstreams);
   }
-  const args = proxyArgsForDeployment(profiles[0]?.proxyArgs ?? [], port, openAiTarget);
+  const args = proxyArgsForDeployment(profiles[0]?.proxyArgs ?? [], port, upstreams);
   let spawnFailure = '';
   try {
     const child = spawn(bin, ['proxy', ...args], {
@@ -356,6 +393,8 @@ async function startRuntime(bin: string, openAiTarget?: string | null): Promise<
   return { ok: false, detail: `headroom did not answer on ${headroomProxyUrl()}` };
 }
 
+const START_LOCK_STALE_MS = 30_000;
+
 /**
  * One start at a time, across processes. Several agents launch together at login; without this, each
  * one reaps and starts, and headroom's deployment manager answers a busy port with a second proxy.
@@ -364,7 +403,23 @@ function startLockFile(): string {
   return path.join(tersioHome(), 'headroom-start.lock');
 }
 
-function acquireStartLock(): boolean {
+function startLockOwnerIsAlive(file: string): boolean {
+  let pid: number;
+  try {
+    pid = Number(readFileSync(file, 'utf8').split(':', 1)[0]);
+  } catch {
+    return false;
+  }
+  if (!Number.isSafeInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error instanceof Error && 'code' in error && error.code === 'EPERM';
+  }
+}
+
+function acquireStartLock(): string | null {
   const file = startLockFile();
   // The data home may not exist yet on a first run; `wx` above would fail with ENOENT and read as held.
   try {
@@ -372,29 +427,61 @@ function acquireStartLock(): boolean {
   } catch {
     /* the write below reports the real problem */
   }
+  const owner = `${process.pid}:${randomUUID()}`;
   try {
-    writeFileSync(file, String(process.pid), { flag: 'wx' });
-    return true;
+    writeFileSync(file, owner, { flag: 'wx' });
+    return owner;
   } catch {
     /* held */
   }
   try {
-    // A crashed start can leave the file behind; the wait window is the lifetime of a real start.
-    if (Date.now() - statSync(file).mtimeMs > 30_000) {
-      rmSync(file, { force: true });
-      return acquireStartLock();
+    if (Date.now() - statSync(file).mtimeMs > START_LOCK_STALE_MS && !startLockOwnerIsAlive(file)) {
+      const reclaimFile = `${file}.reclaim`;
+      const reclaimOwner = `${process.pid}:${randomUUID()}`;
+      const reclaimTemp = `${reclaimFile}.${randomUUID()}`;
+      let ownsReclaimTemp = false;
+      try {
+        mkdirSync(reclaimTemp);
+        ownsReclaimTemp = true;
+        writeFileSync(path.join(reclaimTemp, 'owner'), reclaimOwner, { flag: 'wx' });
+        if (existsSync(reclaimFile)) {
+          rmSync(reclaimTemp, { recursive: true, force: true });
+          return null;
+        }
+        renameSync(reclaimTemp, reclaimFile);
+        ownsReclaimTemp = false;
+      } catch {
+        if (ownsReclaimTemp) rmSync(reclaimTemp, { recursive: true, force: true });
+        // shortcut: an orphaned gate blocks recovery; remove it only after confirming no reclaimer remains.
+        return null;
+      }
+      try {
+        // Recheck under the gate; another contender may have replaced the stale lock already.
+        if (Date.now() - statSync(file).mtimeMs <= START_LOCK_STALE_MS || startLockOwnerIsAlive(file)) return null;
+        rmSync(file, { force: true });
+        writeFileSync(file, owner, { flag: 'wx' });
+        return owner;
+      } finally {
+        try {
+          if (readFileSync(path.join(reclaimFile, 'owner'), 'utf8') === reclaimOwner)
+            rmSync(reclaimFile, { recursive: true, force: true });
+        } catch {
+          /* a failed cleanup remains fail-closed */
+        }
+      }
     }
   } catch {
     /* vanished between the two calls: try once more */
   }
-  return false;
+  return null;
 }
 
-function releaseStartLock(): void {
+function releaseStartLock(owner: string): void {
+  const file = startLockFile();
   try {
-    rmSync(startLockFile(), { force: true });
+    if (readFileSync(file, 'utf8') === owner) rmSync(file, { force: true });
   } catch {
-    /* already gone */
+    /* already gone or owned by another start */
   }
 }
 
@@ -509,65 +596,44 @@ function dropLease(sessionId: string): void {
   writeLeases(leases);
 }
 
-/** True when another agent session still holds the proxy. */
-/**
- * How long a quit waits before the stop. A restart, a `/new`, or a second agent launching in the same
- * second must not race the stop, or a live session is left pointing at a dead port.
- */
-const STOP_GRACE_MS = 2_500;
-
-function otherSessionLive(sessionId: string): boolean {
-  const now = Date.now();
-  return Object.entries(readLeases()).some(
-    ([id, at]) => id !== sessionId && Number.isFinite(at) && now - at <= LEASE_TTL_MS,
-  );
-}
-
 /** Refresh this session's lease; a long session must not let it expire. */
 export function touchHeadroomLease(sessionId: string): void {
   writeLease(sessionId);
 }
 
-/**
- * Release this session's claim. The proxy stops only when no other session holds one, so two agents
- * opened together keep one proxy, and closing one of them leaves it running for the other.
- */
-export async function releaseHeadroomLease(
-  sessionId: string,
-  bin?: string | null,
-  options: { fast?: boolean } = {},
-): Promise<HeadroomRuntimeResult> {
+/** Release the session claim, not the shared proxy that persistent model endpoints still reference. */
+export async function releaseHeadroomLease(sessionId: string): Promise<HeadroomRuntimeResult> {
   dropLease(sessionId);
-  if (otherSessionLive(sessionId)) return { ok: true, detail: 'another agent session still uses the proxy' };
-  // A session quit has a 2s handler budget, so it stops at once instead of waiting for a relaunch.
-  if (options.fast) return stopHeadroomRuntime(bin, { fast: true });
-  // The wait covers an agent that quits and relaunches, and one that is starting right now.
-  await new Promise((resolve) => {
-    setTimeout(resolve, STOP_GRACE_MS);
-  });
-  if (otherSessionLive(sessionId)) return { ok: true, detail: 'another agent session claimed the proxy' };
-  return stopHeadroomRuntime(bin);
+  return { ok: true, detail: 'session released; proxy kept for configured model routes' };
 }
 
 let pending: Promise<HeadroomRuntimeResult> | null = null;
 
 /** Start headroom's runtime once, or report why it could not answer. Concurrent callers share one start. */
-export async function ensureHeadroomRuntime(bin: string, openAiTarget?: string | null): Promise<HeadroomRuntimeResult> {
+export async function ensureHeadroomRuntime(
+  bin: string,
+  upstreams: HeadroomUpstreams = {},
+): Promise<HeadroomRuntimeResult> {
   if (await headroomRuntimeUp()) {
-    if (!openAiTarget) return { ok: true, detail: 'headroom proxy already running' };
-    const entry = deploymentProfiles(headroomProxyPort())[0];
-    if (!entry || !configureDeployment(entry, openAiTarget))
+    // The saved deployment says nothing about what the running process forwards, so only its live argv counts.
+    if (upstreamMismatches(upstreams, liveHeadroomUpstreams()).length === 0)
       return { ok: true, detail: 'headroom proxy already running' };
-    // A restart through `install restart` would bring the 82MB supervisor back, so stop everything and
-    // start the proxy directly with the upstream just written.
-    await stopHeadroomRuntime(bin);
-    const restarted = await startRuntime(bin, openAiTarget);
-    return restarted.ok
-      ? { ok: true, detail: `headroom proxy restarted with ${openAiTarget}` }
-      : { ok: false, detail: `headroom did not answer on ${headroomProxyUrl()} after restart` };
+    // The caller names no restart, so the message carries the one action that clears the refusal.
+    return {
+      ok: false,
+      detail:
+        'the running Headroom forwards other upstreams, so this agent was left unrouted — restart it with: headroom proxy stop && tersio install',
+    };
   }
-  if (pending) return pending;
-  if (!acquireStartLock()) {
+  const startLockOwner = acquireStartLock();
+  if (startLockOwner === null) {
+    const reclaim = `${startLockFile()}.reclaim`;
+    if (existsSync(reclaim) && !startLockOwnerIsAlive(path.join(reclaim, 'owner'))) {
+      return {
+        ok: false,
+        detail: `headroom recovery is blocked by ${reclaim}; verify no reclaimer is active before removing it`,
+      };
+    }
     // Another Tersio process is starting it: wait for that one instead of racing into a second proxy.
     return (await waitForRuntime())
       ? { ok: true, detail: 'headroom proxy started by another tersio process' }
@@ -597,11 +663,11 @@ export async function ensureHeadroomRuntime(bin: string, openAiTarget?: string |
         ? { ok: true, detail: 'headroom proxy was already starting on this port' }
         : { ok: false, detail: `a headroom proxy on ${headroomProxyUrl()} never answered` };
     }
-    pending = startRuntime(bin, openAiTarget).finally(() => {
+    pending = startRuntime(bin, upstreams).finally(() => {
       pending = null;
     });
     return await pending;
   } finally {
-    releaseStartLock();
+    releaseStartLock(startLockOwner);
   }
 }

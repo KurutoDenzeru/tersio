@@ -1,29 +1,23 @@
 // One agent request, in full: recorded fields only, never a guessed value.
-import { useState } from "react"
+import {useState} from "react"
+import {Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,} from "@/components/ui/sheet"
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
-import {
-  displayModel,
-  fmt,
-  fmtMs,
-  hostOfSession,
-  statusColor,
-  statusLabel,
-  tokensPerSecond,
-  whenClock,
-  whenShort,
-  whenStamp,
+    displayModel,
+    fmt,
+    fmtMs,
+    hostOfSession,
+    statusColor,
+    statusLabel,
+    tokensPerSecond,
+    whenClock,
+    whenShort,
+    whenStamp,
 } from "@/lib/format"
-import type { AgentRequestRow } from "@/lib/data"
-import { useAgentRequestEntry } from "@/lib/data"
-import { VendorMark } from "@/components/brand"
-import { AgentLogo } from "@/components/agent-logos"
-import { Icon } from "@/components/icon"
+import type {AgentRequestRow} from "@/lib/data"
+import {useAgentRequestEntry} from "@/lib/data"
+import {VendorMark} from "@/components/brand"
+import {AgentLogo} from "@/components/agent-logos"
+import {Icon} from "@/components/icon"
 
 /** The API family a wire name belongs to, named the way the request itself reports it. */
 function apiClassOf(api: string): string {
@@ -351,13 +345,27 @@ export function AgentRequestDrawer({
           <section className="grid gap-2.5">
             <SectionLabel icon="coins">API-equivalent cost</SectionLabel>
             <div className="grid grid-cols-2 gap-2.5">
-              <DrawerStat label="Total" value={row.unpriced ? "unpriced" : money(row.costUsd)} />
+              <DrawerStat
+                label="Without cache reads"
+                value={row.unoptimizedCost == null ? "n/a" : money(row.unoptimizedCost)}
+              />
+              <DrawerStat label="Resulting cost" value={row.unpriced ? "unpriced" : money(row.costUsd)} />
+              <DrawerStat
+                label="Cache-read savings"
+                value={row.savedCost == null ? "n/a" : money(row.savedCost)}
+                hint={row.savedCost == null || row.unoptimizedCost == null ? "Rate unavailable" : `${row.unoptimizedCost > 0 ? ((row.savedCost / row.unoptimizedCost) * 100).toFixed(1) : "0.0"}% of baseline`}
+              />
               <DrawerStat
                 label="Per output token"
                 value={perOutput === null ? "n/a" : `$${perOutput.toFixed(5)}`}
                 hint="total over output"
               />
             </div>
+            <p className="m-0 text-xs text-dim">
+              Public-rate estimates, not your invoice. The baseline bills recorded cache-read tokens
+              at the full input rate; output and cache writes stay unchanged. Original tokens before
+              compression are not recorded here, so per-request Headroom and RTK savings are unavailable.
+            </p>
           </section>
 
           <section className="grid gap-2.5 rounded-xl border border-line px-3.5 pt-3 pb-2">
@@ -407,6 +415,8 @@ export function AgentRequestDrawer({
                 cacheWrite: row.cacheWrite,
                 totalTokens: row.totalTokens,
                 costUsd: row.costUsd,
+                unoptimizedCost: row.unoptimizedCost ?? null,
+                savedCost: row.savedCost ?? null,
                 unpriced: row.unpriced,
                 durationMs: row.durationMs,
                 ttftMs: row.ttftMs,

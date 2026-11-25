@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
 import { bannerLines, bannerTier } from '../../cli/banner.ts';
-import { detectHosts, hostLabel } from '../../cli/hosts.ts';
 import type { HostEntry } from '../../cli/hosts.ts';
+import { detectHosts, hostLabel } from '../../cli/hosts.ts';
 import { cliEnv, fakeRtkBin } from '../helpers/env.ts';
 import { registryUrl, releasesUrl } from '../helpers/registry.ts';
 
@@ -331,7 +331,7 @@ function run(home: string, args: string[]): { status: number | null; stdout: str
     cwd: root,
     encoding: 'utf8',
     timeout: 30000,
-    env: cliEnv(home, { PATH: path.join(home, 'empty-bin') }),
+    env: cliEnv(home, { PATH: path.join(home, 'empty-bin'), PI_OFFLINE: '1' }),
   });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
@@ -418,6 +418,7 @@ test('install --host pig writes the pig tree and no OMP files', () => {
     expect(result.stdout).toMatch(
       /\[dry-run\] would write .*\.pig[\\/]agent[\\/]extensions[\\/]shared[\\/]session-state\.ts/,
     );
+    expect(result.stdout).toMatch(/\[dry-run\] would write .*\.pig[\\/]agent[\\/]ponytail[\\/]package\.json/);
     expect(result.stdout).toMatch(/\[dry-run\] would write session defaults to .*\.tersio[\\/]settings\.json/);
     expect(result.stdout, 'OMP extension tree must stay untouched').not.toMatch(/\.omp[\\/]agent[\\/]extensions/);
     expect(result.stdout).toMatch(/Done — restart PiG/);
@@ -767,16 +768,16 @@ test('an existing rtk binary is bound on both hosts, never downloaded', () => {
     seedRtk(home);
     const pi = run(home, ['install', '--host', 'pi', '--yes']);
     expect(pi.status, pi.stderr).toBe(0);
-    expect(pi.stdout).toMatch(/RTK — binding into pi/i);
+    expect(pi.stdout).toMatch(/RTK — bound to pi/i);
 
     const omp = run(home, ['install', '--host', 'omp', '--dry-run', '--verbose']);
     expect(omp.status, omp.stderr).toBe(0);
-    expect(omp.stdout).toMatch(/RTK — binding into (OMP|Oh My Pi)/i);
+    expect(omp.stdout).toMatch(/RTK — bound to (OMP|Oh My Pi)/i);
     expect(omp.stdout).not.toMatch(/would download rtk binary/);
     expect(omp.stdout, 'the dry run names the docs, not a download').not.toMatch(/Downloading/);
     const oc = run(home, ['install', '--host', 'opencode', '--dry-run']);
     expect(oc.status, oc.stderr).toBe(0);
-    expect(oc.stdout).toMatch(/RTK — binding into OpenCode/);
+    expect(oc.stdout).toMatch(/RTK — bound to OpenCode/);
     for (const out of [pi.stdout, omp.stdout, oc.stdout]) {
       expect(out, 'no registry probe, no download').not.toMatch(/Downloading RTK binary|Finding latest RTK release/);
     }
@@ -1089,7 +1090,7 @@ test('an unknown command fails with usage and no installer output', () => {
   expect(result.stdout).not.toMatch(/Prerequisites:|Installing|Will remove:/);
 });
 
-test('dry-run previews shared bridge before dependent extensions without writing', () => {
+test('dry-run reports the add-ons in the canvas bands, without writing', () => {
   const missingHome = path.join(root, 'test', 'definitely-missing-home');
   const result = spawnSync(process.execPath, [installer, 'install', '--dry-run'], {
     encoding: 'utf8',
@@ -1098,14 +1099,13 @@ test('dry-run previews shared bridge before dependent extensions without writing
   });
 
   expect(result.status, result.stderr).toBe(0);
-  const shared = result.stdout.indexOf('Shared files — sync session bridge');
-  const rtk = result.stdout.indexOf('RTK session — install session mode');
-  const caveman = result.stdout.indexOf('Caveman — install session mode and rule bodies');
-  expect(shared >= 0, result.stdout).toBeTruthy();
-  expect(rtk > shared, result.stdout).toBeTruthy();
-  expect(caveman > shared, result.stdout).toBeTruthy();
+  // The report groups the steps the way the Quick Start canvas does, so each band names its members.
+  for (const band of ['Configuration', 'Default Feedback', 'Optional Feedback'])
+    expect(result.stdout, band).toContain(band);
   expect(result.stdout).toMatch(/Ponytail — bundled in this plugin/);
-  expect(result.stdout).toMatch(/Tersio — register plugin/);
+  expect(result.stdout).toMatch(/Tersio — plugin registered/);
+  expect(result.stdout).toMatch(/Shared session bridge/);
+  expect(result.stdout).toMatch(/Caveman — session mode and rule bodies/);
   expect(result.stdout).not.toMatch(/\/tmp|\/Users|\.omp[\\/]agent[\\/]extensions\/shared\/session-state\.js/);
   expect(existsSync(path.join(root, 'extensions', 'shared-session-state.js'))).toBe(false);
 });
@@ -1120,8 +1120,8 @@ test('user dry-run installs commands without retired reinforcement', () => {
 
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/Ponytail — bundled in this plugin/);
-  expect(result.stdout).toMatch(/Combo — install preset switch/);
-  expect(result.stdout).toMatch(/Tersio — register plugin/);
+  expect(result.stdout).toMatch(/Combo — preset switch/);
+  expect(result.stdout).toMatch(/Tersio — plugin registered/);
   expect(result.stdout).not.toMatch(/mode reinforcement/i);
 });
 test('verbose dry-run reveals file paths hidden by default', () => {

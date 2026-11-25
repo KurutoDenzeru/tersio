@@ -43,7 +43,7 @@ function storeStamp(): string {
 }
 
 /** Bumped when the payload shape changes, so a cached row from an older build is never read as the new shape. */
-const AGENT_CACHE_VERSION = 2;
+const AGENT_CACHE_VERSION = 3;
 
 /** One cache row per range and view, so a restarted server serves what the last one built. */
 function agentCacheKey(range: RangeKey, view: AgentView, offset: number): string {

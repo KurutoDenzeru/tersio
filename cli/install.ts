@@ -1,55 +1,57 @@
 // cli/install.ts — install flow and all setup steps.
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
+import type { InstallOptions, WriteOptions } from './common.ts';
 import {
+  applyUpdate,
+  args,
+  assumeYes,
   BUN_BIN,
+  cavemanDefaultFlag,
+  codegraphDefaultFlag,
+  codegraphSyncFlag,
   COMBO_PRESET_MODES,
+  comboDefaultFlag,
+  command,
+  currency,
+  dashboardExport,
+  dashboardPort,
+  debug,
+  dryRun,
+  ensurePonytailConfigValue,
+  execP,
+  headroomDefaultFlag,
   HOME,
   IS_WINDOWS,
   NPM_BIN,
   OMP_AGENT_DIR,
-  OMP_PLUGINS_DIR,
   OMP_BIN,
+  OMP_PLUGINS_DIR,
   PACKAGE_NAME,
   PACKAGE_VERSION,
-  args,
-  applyUpdate,
-  assumeYes,
-  cavemanDefaultFlag,
-  comboDefaultFlag,
-  command,
-  dryRun,
+  parseJsonObject,
   ponytailDefaultFlag,
-  pstackDefaultFlag,
-  headroomDefaultFlag,
   profileFlagsGiven,
+  pstackDefaultFlag,
+  readPluginsPackage,
   rtkDefaultFlag,
   verbose,
-  yes,
-  dashboardExport,
-  dashboardPort,
-  currency,
-  debug,
-  ensurePonytailConfigValue,
-  execP,
-  parseJsonObject,
-  readPluginsPackage,
   writeIfChanged,
+  yes,
 } from './common.ts';
-import type { InstallOptions, WriteOptions } from './common.ts';
 import {
   askInteractiveChoice,
   askInteractiveConfirm,
   closeRL,
   execNetwork,
-  tty,
   sayTagged,
+  tty,
   withInteractiveSpinner,
 } from './interactive.ts';
 import { printWelcome } from './banner.ts';
 import { checkForUpdate, newerThan, runLatestUpdate } from './update.ts';
 import { runUninstall } from './uninstall.ts';
-import { claudeLocalPluginFiles, claudeLocalMarketplaceRoot } from '../extensions/shared/claude-plugin.ts';
+import { claudeLocalMarketplaceRoot, claudeLocalPluginFiles } from '../extensions/shared/claude-plugin.ts';
 import {
   CLAUDE_MARKETPLACE_NAME,
   CLAUDE_PLUGIN_ID,
@@ -60,7 +62,8 @@ import { runDoctor } from './doctor.ts';
 import { runDashboard } from './dashboard.ts';
 import { wireRtk } from './rtk-wiring.ts';
 import {
-  RTK_INSTALL_DOCS,
+  findPackageRoot,
+  homeDir,
   piAgentDir,
   pigAgentDir,
   readTextIfExists,
@@ -68,38 +71,39 @@ import {
   resolveHeadroomBinary,
   resolveHostBinary,
   resolveRtkBinary,
+  RTK_INSTALL_DOCS,
   shimCommand,
 } from '../extensions/shared/utils.ts';
-import { findPackageRoot, homeDir } from '../extensions/shared/utils.ts';
 import { patchState } from '../extensions/shared/state.ts';
 import { CAVEMAN_PIN } from './upstream.ts';
-import {
-  headroomHostSupported,
-  headroomProxyPort,
-  headroomProxyUrl,
-  readOmpGateway,
-} from '../extensions/shared/headroom-proxy.ts';
+import { headroomHostSupported, headroomProxyUrl } from '../extensions/shared/headroom-proxy.ts';
 import { ensureTersioMcp, tersioMcpConfigured, tersioMcpSupported } from '../extensions/shared/mcp-config.ts';
 import { ensureHeadroomRuntime, headroomFitsMachine } from '../extensions/shared/headroom-runtime.ts';
-import { routeHostOn } from '../extensions/shared/headroom-routes.ts';
-import type { HostDefaultField } from './profile.ts';
+import { resolveCodeGraphLibrary } from '../extensions/codegraph/shared.ts';
+import { installCodeGraphBundle } from '../extensions/codegraph/install.ts';
+import { headroomRouteUpstreams, routeHostOn } from '../extensions/shared/headroom-routes.ts';
+import type { HostDefaultField, Profile } from './profile.ts';
 import { formatCliStatus, saveHostDefaults, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
+import type { CodegraphSyncMode } from '../extensions/shared/plugin-settings.ts';
+import { codegraphReachable, supportsCodegraph } from '../extensions/shared/plugin-settings.ts';
+import { linkCodeGraphCli } from './codegraph-bundle.ts';
+import { disableCodeGraphTelemetry } from '../extensions/codegraph/install.ts';
 import { readRtkDefault, tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import {
   EXT_DIR,
-  PI_RTK_MANIFEST,
+  filesUnder,
   PI_PONYTAIL_FILES,
+  PI_RTK_MANIFEST,
   PONYTAIL_BUNDLE_FILES,
   PONYTAIL_DIR,
   PONYTAIL_PKG,
-  filesUnder,
   reapObsoleteTreeDirs,
   rootFiles,
   sourcePath,
   syncPluginManifest,
   syncTreeFiles,
 } from './manifest.ts';
-import type { Profile } from './profile.ts';
+import type { HostEntry } from './hosts.ts';
 import {
   detectHosts,
   dshCliProfiles,
@@ -110,20 +114,20 @@ import {
   dshRunner,
   hostOptions,
   parseHostArg,
-  piTersioSource,
   pigTersioSource,
+  piTersioSource,
   writeDshMcpCommand,
 } from './hosts.ts';
-import type { HostEntry } from './hosts.ts';
+import type { HostId } from '../extensions/shared/host-caps.ts';
 import { hostCap } from '../extensions/shared/host-caps.ts';
 import {
   CODEX_MARKETPLACE_NAME,
   CODEX_PLUGIN_ID,
   codexHome,
+  codexHookCommand,
   codexLocalMarketplaceRoot,
   codexLocalPluginFiles,
   codexPluginInstalled,
-  codexHookCommand,
   codexPromptFiles,
   codexPromptsDir,
   codexUserHooksFile,
@@ -131,11 +135,40 @@ import {
   installedCodexPlugin,
 } from '../extensions/shared/codex-plugin.ts';
 import { codexPackagedPluginDir } from '../extensions/shared/codex-state.ts';
-import type { HostId } from '../extensions/shared/host-caps.ts';
+
+/** The install report's bands, named the way the Quick Start canvas names them. */
+type ReportBand = 'modes' | 'config' | 'optional';
+const BAND_TITLES: Record<ReportBand, string> = {
+  config: 'Configuration',
+  modes: 'Default Feedback',
+  optional: 'Optional Feedback',
+};
+const BAND_ORDER: readonly ReportBand[] = ['config', 'modes', 'optional'];
+
+/** Lines held back while a run reports, so the steps read in the canvas's bands instead of install order. */
+let collected: Array<{ band: ReportBand; line: string }> | null = null;
+
+function reportLine(band: ReportBand, line: string): void {
+  // A run that is not collecting (pi, pig, codex, claude, dsh) prints its lines at once, as before.
+  if (collected) collected.push({ band, line });
+  else console.log(line);
+}
+
+/** Group the held lines under their band titles: one heading per band that has members, in canvas order. */
+function flushReport(): void {
+  const lines = collected ?? [];
+  collected = null;
+  for (const band of BAND_ORDER) {
+    const members = lines.filter((entry) => entry.band === band);
+    if (members.length === 0) continue;
+    console.log(`  ${BAND_TITLES[band]}`);
+    for (const entry of members) console.log(`    ${entry.line}`);
+  }
+}
 
 async function stepPonytail(pluginsDir: string, options: InstallOptions): Promise<void> {
   // Ponytail rides inside this package now. An older install carried it as its own dependency, which a host then listed as a second plugin, so drop that entry and its sibling copy.
-  if (!options.quiet) console.log('  Ponytail — bundled in this plugin');
+  if (!options.quiet) reportLine('modes', '🧠 Ponytail — bundled in this plugin');
   const pkgPath = path.join(pluginsDir, 'package.json');
   const pkg = await readPluginsPackage(pkgPath);
   let migrated = false;
@@ -197,7 +230,7 @@ async function syncOmpPluginLock(pluginsDir: string, pkgName: string, version: s
 }
 
 async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Promise<boolean> {
-  if (!options.quiet) console.log('  Tersio — register plugin');
+  if (!options.quiet) reportLine('config', '🧩 Tersio — plugin registered');
   const pkgPath = path.join(pluginsDir, 'package.json');
   const pkg = await readPluginsPackage(pkgPath);
   for (const legacy of ['oh-my-pi-token-saver', 'tersio-omp']) {
@@ -280,10 +313,9 @@ const RETIRED_OMP_AGENT_DIRS = [
 /** Drop the copies an older OMP install left in the agent tree, keeping rtk's `rtk.ts`. */
 async function stepRetireAgentCopies(extDir: string, options: InstallOptions): Promise<void> {
   const stale = RETIRED_OMP_AGENT_DIRS.filter((dir) => existsSync(path.join(extDir, dir)));
-  if (stale.length === 0) {
-    if (!options.quiet) console.log('  Retired agent copies — none');
-  } else {
-    if (!options.quiet) console.log(`  Retired agent copies — remove ${stale.join(', ')}`);
+  // Nothing retired is the normal case, so it stays silent; only a real sweep gets a line.
+  if (stale.length > 0) {
+    if (!options.quiet) console.log(`  🧹 Retired agent copies — remove ${stale.join(', ')}`);
     if (options.dryRun) {
       if (verbose) sayTagged(`  [dry-run] would remove ${stale.map((d) => path.join(extDir, d)).join(', ')}`);
     } else {
@@ -376,7 +408,7 @@ async function stepRtk(options: InstallOptions, target: HostId = 'omp'): Promise
   }
   const hostName = hostCap(target)?.label ?? target;
   // The path only under --verbose: a plain run stays free of real user paths.
-  if (!options.quiet) console.log(`  RTK — binding into ${hostName}${verbose ? ` (${found})` : ''}`);
+  if (!options.quiet) reportLine('modes', `🗜️ RTK — bound to ${hostName}${verbose ? ` (${found})` : ''}`);
   await wireRtk(found, target, options);
 }
 
@@ -403,18 +435,18 @@ async function copySources(
 }
 
 async function stepSharedSessionState(extDir: string, options: WriteOptions): Promise<void> {
-  if (!options.quiet) console.log('  Shared files — sync session bridge');
+  if (!options.quiet) reportLine('config', '🔗 Shared session bridge');
   await copySources(extDir, filesUnder('shared'), 'shared/session-state.js', options);
 }
 
 async function stepRtkSession(extDir: string, options: WriteOptions): Promise<void> {
-  if (!options.quiet) console.log('  RTK session — install session mode');
+  if (!options.quiet && verbose) reportLine('modes', '🗜️ RTK session — session mode');
   await copySources(extDir, filesUnder('rtk'), 'rtk/session.ts', options);
 }
 
 // pi's built-in grep and glob never reach the bash hook, so this one filters their output.
 async function stepRtkFilter(extDir: string, options: WriteOptions): Promise<void> {
-  if (!options.quiet) console.log('  RTK filter — install built-in tool output filtering');
+  if (!options.quiet && verbose) reportLine('modes', '🗜️ RTK filter — tool output filtering');
   await copySources(extDir, filesUnder('rtk'), 'rtk/filter.ts', options);
 }
 
@@ -429,7 +461,7 @@ const CAVEMAN_RULES: readonly string[] = [
 ];
 
 async function stepCaveman(extDir: string, options: WriteOptions): Promise<void> {
-  if (!options.quiet) console.log('  Caveman — install session mode and rule bodies');
+  if (!options.quiet) reportLine('modes', '🪨 Caveman — session mode and rule bodies');
   const cavemanDir = path.join(extDir, 'caveman');
   if (!options.dryRun) await fs.mkdir(cavemanDir, { recursive: true });
 
@@ -455,7 +487,7 @@ async function stepCaveman(extDir: string, options: WriteOptions): Promise<void>
 }
 
 async function stepTersioCommands(extDir: string, options: WriteOptions): Promise<void> {
-  if (!options.quiet) console.log('  Tersio commands — install /tersio root command');
+  if (!options.quiet) reportLine('config', '⌨️ /tersio command');
   await copySources(extDir, filesUnder('commands'), 'commands/index.ts', options);
 }
 
@@ -470,20 +502,25 @@ async function stepTiming(extDir: string, options: WriteOptions): Promise<void> 
 }
 
 async function stepCombo(extDir: string, options: InstallOptions): Promise<void> {
-  if (!options.quiet) console.log('  Combo — install preset switch');
+  if (!options.quiet) reportLine('modes', '🧩 Combo — preset switch');
   await copySources(extDir, filesUnder('combo'), 'combo/index.ts', options);
 }
 
 // The body is a Tersio fork of an upstream skill, so the install copies it and never fetches it.
 async function stepPstack(extDir: string, options: InstallOptions): Promise<void> {
-  if (!options.quiet) console.log('  pstack — install the rigor mode');
+  if (!options.quiet) reportLine('optional', '🥔 pstack — the rigor mode');
   await copySources(extDir, filesUnder('pstack'), 'pstack/index.ts', options);
 }
 
 // The mode tracks the user's own Headroom install and never installs it: opt-in end to end.
 async function stepHeadroom(extDir: string, options: InstallOptions): Promise<void> {
-  if (!options.quiet) console.log('  Headroom — install the token-saver mode');
+  if (!options.quiet) reportLine('optional', '🍃 Headroom — the token-saver mode');
   await copySources(extDir, filesUnder('headroom'), 'headroom/index.ts', options);
+}
+
+async function stepCodegraph(extDir: string, options: InstallOptions): Promise<void> {
+  if (!options.quiet) reportLine('optional', '🕸️ CodeGraph — knowledge graph extension');
+  await copySources(extDir, filesUnder('codegraph'), 'codegraph/index.ts', options);
 }
 
 // The tree ships no node_modules, so the ruleset rides along as files. Both hosts need the same six.
@@ -511,7 +548,7 @@ async function stepPonytailBundle(treeDir: string, options: InstallOptions): Pro
 // OpenCode loads imported .ts plugins from the config plugins dir, so a plain tree copy + one config entry is enough.
 async function stepOpencode(options: InstallOptions): Promise<void> {
   const dir = path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
-  if (!options.quiet) console.log(`  OpenCode — write the plugin tree (${dir})`);
+  if (!options.quiet) console.log(`  🤖 OpenCode — write the plugin tree${verbose ? ` (${dir})` : ''}`);
   // Retire the `-session`/`-toggle` leftovers first: a rule body found in one still resolves.
   await stepRetireAgentCopies(dir, options);
   await stepSharedSessionState(dir, options);
@@ -522,9 +559,9 @@ async function stepOpencode(options: InstallOptions): Promise<void> {
   await stepCombo(dir, options);
   await stepPstack(dir, options);
   await stepHeadroom(dir, options);
+  await stepCodegraph(dir, options);
   await copySources(dir, filesUnder('commands'), 'commands/index.ts', options);
   await stepPonytailBundle(dir, options);
-  // The loader resolves <pluginDir>/server.ts, and the entry is that file: copy it in place.
   await copySources(dir, rootFiles(), 'server.ts', options);
 
   const configPath = path.join(HOME, '.config', 'opencode', 'opencode.json');
@@ -541,7 +578,7 @@ async function stepOpencode(options: InstallOptions): Promise<void> {
   config.plugins = kept;
   if (!options.dryRun) {
     await fs.mkdir(path.dirname(configPath), { recursive: true });
-    await fs.rm(path.join(HOME, '.config', 'opencode', 'plugins', 'rtk.ts'), { force: true }).catch(() => { });
+    await fs.rm(path.join(HOME, '.config', 'opencode', 'plugins', 'rtk.ts'), { force: true }).catch(() => {});
   }
   // The user's own config, so keep the previous copy beside it.
   await writeIfChanged(configPath, `${JSON.stringify(config, null, 2)}\n`, { ...options, backup: true });
@@ -593,11 +630,14 @@ async function resolveProfile(
   if (ponytailDefaultFlag !== undefined) mutable.ponytailDefault = ponytailDefaultFlag;
   if (pstackDefaultFlag !== undefined) profile.pstackDefault = pstackDefaultFlag;
   if (headroomDefaultFlag !== undefined) profile.headroomDefault = headroomDefaultFlag;
+  if (codegraphDefaultFlag !== undefined) mutable.codegraphDefault = codegraphDefaultFlag;
+  // The sync interval is shared by every agent, so it is written with the shared store on any install.
+  if (codegraphSyncFlag !== undefined) profile.codegraphSync = codegraphSyncFlag as CodegraphSyncMode;
 
   const rtkLabel = mutable.rtkDefault === 'inherit' ? 'inherit' : profile.rtkDefault ? 'on' : 'off';
   if ((!opts.quiet && verbose) || dryRun)
     console.log(
-      `  Defaults${opts.host ? ` for ${opts.host}` : ''}: combo=${profile.comboDefault} (caveman=${profile.cavemanDefault} · rtk=${rtkLabel} · ponytail=${profile.ponytailDefault} · pstack=${profile.pstackDefault} · headroom=${profile.headroomDefault})`,
+      `  Defaults${opts.host ? ` for ${opts.host}` : ''}: combo=${profile.comboDefault} (caveman=${profile.cavemanDefault} · rtk=${rtkLabel} · ponytail=${profile.ponytailDefault} · pstack=${profile.pstackDefault} · headroom=${profile.headroomDefault}) · codegraph=${profile.codegraphDefault} · codegraph sync=${profile.codegraphSync}`,
     );
   // Only a run that actually chose (a preset pick or a per-mode flag) may write a host's own section, and only the fields it chose.
   const chosenFields: HostDefaultField[] = [];
@@ -608,6 +648,7 @@ async function resolveProfile(
     chosenFields.push('ponytailDefault');
   if (pstackDefaultFlag !== undefined) chosenFields.push('pstackDefault');
   if (headroomDefaultFlag !== undefined) chosenFields.push('headroomDefault');
+  if (codegraphDefaultFlag !== undefined) chosenFields.push('codegraphDefault');
   return { profile, choseDefaults: comboChosen || profileFlagsGiven, chosenFields };
 }
 
@@ -634,7 +675,7 @@ async function maybeInstallHeadroom(profile: Profile, quiet: boolean, host: Host
       'Headroom is already installed — enable it for new sessions? (optional)',
     );
     if (answer.status !== 'confirmed' || !answer.value) return false;
-    console.log('  Headroom — enabled');
+    console.log('  🍃 Headroom — enabled');
     return true;
   }
   // The prompt names the tool that will actually run, so the optional step has no surprises. The hint is built from the same argv the executor uses — `python3 -m pip` on POSIX, `pip` on Windows.
@@ -656,7 +697,7 @@ async function maybeInstallHeadroom(profile: Profile, quiet: boolean, host: Host
     'skip',
   );
   if (answer.status !== 'selected' || answer.value !== 'install') return false;
-  console.log(`  Headroom — installing with ${via} (this can take a minute)…`);
+  console.log(`  🍃 Headroom — installing with ${via} (this can take a minute)…`);
   try {
     const shim = shimCommand(cmd, installArgs);
     await execP(shim.cmd, shim.args, { timeout: 300_000 });
@@ -668,7 +709,37 @@ async function maybeInstallHeadroom(profile: Profile, quiet: boolean, host: Host
     sayTagged('  [warn] Headroom installed, but its command is not reachable yet — enable it once it is on PATH');
     return false;
   }
-  console.log('  Headroom — installed and enabled');
+  console.log('  🍃 Headroom — installed and enabled');
+  return true;
+}
+
+/**
+ * The optional CodeGraph prompt, asked once per interactive install right after Headroom's. CodeGraph
+ * is on by default, so Yes (the highlighted answer) changes nothing and No opts the target host out:
+ * the answer rides the same host section the rest of the install writes.
+ */
+async function maybeAskCodegraph(profile: Profile, quiet: boolean, host: HostId): Promise<boolean> {
+  if (!codegraphReachable(host)) return false;
+  if (!tty() || dryRun || applyUpdate || assumeYes) return false;
+  const installed = resolveCodeGraphLibrary() !== null;
+  // Codex loads no CodeGraph extension; its prompt names the surfaces the flag actually reaches there.
+  const question =
+    host === 'codex'
+      ? '🕸️ CodeGraph — rides the Tersio MCP tool, and Codex\'s hook keeps an existing index fresh. Enable it?'
+      : installed
+        ? '🕸️ CodeGraph — already installed. Keep it enabled for new sessions?'
+        : '🕸️ CodeGraph — optional code intelligence (symbol index, callers, blast radius). Enable it?';
+  const answer = await askInteractiveChoice(question, [
+    {
+      value: 'on',
+      label: 'Yes (default)',
+      hint: installed || host === 'codex' ? 'stays enabled' : 'the bundle downloads into ~/.tersio/codegraph',
+    },
+    { value: 'off', label: 'No (optional)', hint: 'enable later: tersio modes codegraph on' },
+  ], 'on');
+  if (answer.status !== 'selected' || answer.value !== 'off') return false;
+  profile.codegraphDefault = 'off';
+  if (!quiet) console.log('  CodeGraph — off for new sessions');
   return true;
 }
 
@@ -728,7 +799,7 @@ async function stepOmpSkills(packageRoot: string, options: InstallOptions): Prom
     `${JSON.stringify({ ...before, skills: { ...skills, customDirectories: dirs } }, null, 2)}\n`,
     options,
   );
-  if (!options.quiet) sayTagged(`  Skills — registered ${skillsDir} for /skill commands`);
+  if (!options.quiet) reportLine('config', `🛠️ /skill commands registered${verbose ? ` (${skillsDir})` : ''}`);
 }
 
 /** The Headroom half of a run: refresh the binary on --apply-update, then wire a supported host when the mode is on. */
@@ -748,17 +819,15 @@ async function lifecycleHeadroom(host: HostId, enabled: boolean, profile: Profil
   }
   if (dryRun || !headroomHostSupported(host) || (!enabled && profile.headroomDefault !== 'on')) return;
   try {
-    const port = headroomProxyPort();
-    const gateway = hostCap(host)?.headroomGateway ? readOmpGateway(port) : null;
-    // The config points the agent at the proxy, so the runtime starts first.
-    const runtime = await ensureHeadroomRuntime(bin, gateway?.baseUrl);
+    // The config points the agent at the proxy, so the runtime starts first, forwarding what the route needs.
+    const runtime = await ensureHeadroomRuntime(bin, headroomRouteUpstreams(host));
     if (!runtime.ok) throw new Error(runtime.detail);
     // One writer per agent, all of them Tersio's: the route is written and put back here.
     const routed = await routeHostOn(host, headroomProxyUrl());
     if (!routed.ok) throw new Error(routed.detail);
-    if (!quiet) sayTagged(`  Headroom — endpoint routed for ${hostEntry(host).label}`);
+    if (!quiet && verbose) sayTagged(`  🍃 Headroom — routed for ${hostEntry(host).label}`);
   } catch (e) {
-    if (!quiet) sayTagged(`  Headroom — ${hostEntry(host).label} integration failed: ${(e as Error).message}`);
+    if (!quiet) sayTagged(`  🍃 Headroom — ${hostEntry(host).label} integration failed: ${(e as Error).message}`);
   }
 }
 
@@ -834,12 +903,12 @@ async function runCommandMenu(): Promise<void> {
       const targets: Array<{ value: string; label: string; hint?: string }> = [
         ...(installed.length > 0
           ? [
-            {
-              value: 'agents',
-              label: 'AI agents',
-              hint: `${installed.map((host) => host.label).join(', ')} — pick one next`,
-            },
-          ]
+              {
+                value: 'agents',
+                label: 'AI agents',
+                hint: `${installed.map((host) => host.label).join(', ')} — pick one next`,
+              },
+            ]
           : []),
         { value: 'cli', label: 'Tersio CLI only', hint: 'leave agent extensions as they are' },
       ];
@@ -946,6 +1015,7 @@ async function stepPiLayer(options: InstallOptions): Promise<void> {
   await stepCombo(extDir, options);
   await stepPstack(extDir, options);
   await stepHeadroom(extDir, options);
+  await stepCodegraph(extDir, options);
   await stepTersioCommands(extDir, options);
   await stepPonytailForPi(agentDir, options, 'pi');
   await reapObsoleteTreeDirs(extDir, options);
@@ -970,6 +1040,7 @@ async function stepPigLayer(options: InstallOptions): Promise<void> {
   await stepCombo(extDir, options);
   await stepPstack(extDir, options);
   await stepHeadroom(extDir, options);
+  await stepCodegraph(extDir, options);
   await stepTersioCommands(extDir, options);
   await stepPonytailForPi(agentDir, options, 'pig');
   await reapObsoleteTreeDirs(extDir, options);
@@ -979,7 +1050,7 @@ async function stepPigLayer(options: InstallOptions): Promise<void> {
 const PI_PONYTAIL_PACKAGE = `${JSON.stringify({ name: 'ponytail', version: '0.0.0', private: true, pi: { extensions: ['./pi-extension/index.ts'], skills: ['./skills'] } }, null, 2)}\n`;
 
 async function stepPonytailForPi(agentDir: string, options: InstallOptions, host: 'pi' | 'pig' = 'pi'): Promise<void> {
-  if (!options.quiet) console.log(`  Ponytail — write the local ${host} package`);
+  if (!options.quiet) reportLine('modes', `🧠 Ponytail — local ${host} package`);
   const root = PONYTAIL_DIR;
   const dest = path.join(agentDir, 'ponytail');
   if (!root) {
@@ -1060,6 +1131,15 @@ async function stepDsh(installOptions: InstallOptions): Promise<void> {
   const fromCheckout = existsSync(path.join(root, 'tersio.ts'));
   const spec = fromCheckout ? `link:${root}` : `npm:${PACKAGE_NAME}@${PACKAGE_VERSION}`;
   const profiles = dshCliProfiles();
+  // The bundle carries the same modes the other hosts install one by one, so the report names them here.
+  if (!installOptions.quiet && !installOptions.dryRun) {
+    reportLine('modes', '🪨 Caveman — session mode and rule bodies');
+    reportLine('modes', '🧠 Ponytail — bundled in this plugin');
+    reportLine('modes', '🧩 Combo — preset switch');
+    reportLine('optional', '🥔 pstack — the rigor mode');
+    reportLine('optional', '🍃 Headroom — the token-saver mode');
+    reportLine('optional', '🕸️ CodeGraph — knowledge graph extension');
+  }
   if (installOptions.dryRun) {
     console.log(
       `  [dry-run] would run: dsh plugin --profile <${profiles.join(',') || 'none'}> add ${spec} for every CLI profile`,
@@ -1073,19 +1153,17 @@ async function stepDsh(installOptions: InstallOptions): Promise<void> {
           `the dsh ${profile} profile did not mount the tersio bundle — the installed release must ship the dsh bundle field`,
         );
       }
-      if (!installOptions.quiet) console.log(`  DeepSeek Harness — tersio bundle mounted in the ${profile} profile`);
+      if (!installOptions.quiet) reportLine('config', `🐋 DeepSeek Harness — bundle mounted in the ${profile} profile`);
       // A GUI launch inherits no shell PATH, so the MCP row gets the binary that exists, not the name.
       const binary = resolveHostBinary('tersio');
       if (binary && writeDshMcpCommand(profile, binary) && !installOptions.quiet) {
-        console.log(`  DeepSeek Harness — MCP command pinned to ${verbose ? binary : path.basename(binary)}`);
+        if (verbose) reportLine('config', `🐋 DeepSeek Harness — MCP command pinned to ${binary}`);
       }
     }
   }
   // The Electron app owns its desktop profile and refuses CLI writes; its Plugins pane is the install path.
   if (dshDesktopProfilePresent() && !installOptions.quiet) {
-    console.log(
-      `  DeepSeek Harness (desktop app) — add ${PACKAGE_NAME} from Plugins → Add plugin, then restart the app`,
-    );
+    reportLine('config', `🐋 DeepSeek Harness (desktop app) — add ${PACKAGE_NAME} from Plugins → Add plugin, then restart the app`);
   }
 }
 
@@ -1116,7 +1194,7 @@ async function stepCodex(options: InstallOptions): Promise<void> {
     return;
   }
 
-  if (!options.quiet) console.log(`  Codex — register the local marketplace (${root})`);
+  if (!options.quiet) reportLine('config', `🤖 Codex — local marketplace registered${verbose ? ` (${root})` : ''}`);
   await fs.mkdir(codexHome(), { recursive: true });
   for (const [rel, text] of Object.entries(codexLocalPluginFiles())) {
     await writeIfChanged(path.join(root, ...rel.split('/')), text, options);
@@ -1143,13 +1221,13 @@ async function stepCodex(options: InstallOptions): Promise<void> {
   // user-level file is the only surface that does, and it is the one rtk and headroom also use.
   const installed = ensureCodexUserHook(codexHookCommand(), codexUserHooksFile(), Boolean(options.dryRun));
   if (!options.quiet) {
-    console.log(`  Codex — plugin ${state.version ?? 'installed'} enabled`);
+    reportLine('config', `🤖 Codex — plugin ${state.version ?? 'installed'} enabled`);
     if (!installed.ok) {
       sayTagged(`  [warn] could not write ${codexUserHooksFile()}: ${installed.detail}`);
     } else if (options.dryRun) {
       sayTagged(`  [dry-run] would add the Tersio prompt hook to ${codexUserHooksFile()}`);
     } else {
-      console.log(`  Codex — prompt hook registered in ${codexUserHooksFile()} (approve it once in /hooks)`);
+      reportLine('config', '🤖 Codex — prompt hook registered (approve it once in /hooks)');
     }
   }
 }
@@ -1177,7 +1255,7 @@ async function stepClaude(options: InstallOptions): Promise<void> {
     return;
   }
 
-  if (!options.quiet) console.log(`  Claude Code — write the local marketplace (${root})`);
+  if (!options.quiet) reportLine('config', `🤖 Claude Code — local marketplace registered${verbose ? ` (${root})` : ''}`);
   for (const [rel, text] of Object.entries(claudeLocalPluginFiles())) {
     await writeIfChanged(path.join(root, ...rel.split('/')), text, options);
   }
@@ -1192,11 +1270,22 @@ async function stepClaude(options: InstallOptions): Promise<void> {
     const why = state.missing.length ? ` (missing: ${state.missing.join(', ')})` : state.enabled ? '' : ' (disabled)';
     throw new Error(`Claude Code did not install ${CLAUDE_PLUGIN_ID}${why}`);
   }
-  if (!options.quiet) console.log(`  Claude Code — plugin ${state.version ?? 'installed'} enabled`);
+  if (!options.quiet) reportLine('config', `🤖 Claude Code — plugin ${state.version ?? 'installed'} enabled`);
   await stepRtk(options, 'claude');
   // rtk init always writes the hook; the stored Claude preference decides whether it stays.
   setClaudeRtkHook(readRtkDefault('claude'));
-  if (!options.quiet) console.log('  Claude Code — the combo strip draws above the prompt, and /tersio prints it');
+  if (!options.quiet) reportLine('config', '🤖 Claude Code — the combo strip draws above the prompt, and /tersio prints it');
+}
+
+/** Link the bundled upstream CLI into ~/.local/bin and say what happened, once the bundle is in place. */
+async function linkCodeGraphCliSummary(quiet: boolean): Promise<void> {
+  const link = await linkCodeGraphCli();
+  if (quiet || link !== 'linked') return;
+  const dir = path.join(homeDir(), '.local', 'bin');
+  console.log(`  🕸️ CodeGraph CLI linked${verbose ? ` at ${dir}/codegraph` : ''} (the full upstream CLI: codegraph --help)`);
+  if (!(process.env.PATH ?? '').split(path.delimiter).includes(dir)) {
+    sayTagged(`  [note] ${dir} is not on PATH yet — add it to use the bare codegraph command`);
+  }
 }
 
 async function runInstall(forcedHost?: HostId): Promise<void> {
@@ -1225,6 +1314,8 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
 
   // apply-update stays silent: the parent printed the plan.
   const quiet = applyUpdate;
+  // The whole install reports in bands, whatever the agent: one shape for every run.
+  collected = [];
   if (!quiet) printWelcome();
 
   if (dryRun && !quiet) console.log('Preview — no changes will be written.\n');
@@ -1274,6 +1365,9 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
     if (!chosenFields.includes('headroomDefault')) chosenFields.push('headroomDefault');
   }
   await lifecycleHeadroom(targetHost, headroomEnabled, profile, quiet);
+  // The optional CodeGraph prompt rides the same slot: Yes keeps the default, No opts the target out.
+  const codegraphChosen = await maybeAskCodegraph(profile, quiet, targetHost);
+  if (codegraphChosen && !chosenFields.includes('codegraphDefault')) chosenFields.push('codegraphDefault');
   // Asked here, written with the other config below, so the question lands before the final confirm.
   const mcpWanted = await maybeInstallMcp(targetHost, quiet);
 
@@ -1286,26 +1380,29 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
   // Point of no return: disk writes start here; pipes stay unattended.
   if (!yes && !dryRun && !applyUpdate && tty()) {
     const target = hostEntry(targetHost);
-    const where =
-      targetHost === 'pi'
-        ? path.join(piAgentDir(), 'extensions')
-        : targetHost === 'pig'
-          ? path.join(pigAgentDir(), 'extensions')
-          : targetHost === 'opencode'
-            ? path.join(HOME, '.config', 'opencode', 'plugins', 'tersio')
-            : targetHost === 'dsh'
-              ? path.join(dshHome(), 'profiles', 'web')
-              : targetHost === 'codex'
-                ? path.join(codexLocalMarketplaceRoot(), 'plugins', 'tersio')
-                : path.join(OMP_AGENT_DIR, 'extensions');
+    // Paths stay under --verbose: a plain run says which agent, not where its files land.
+    if (verbose) {
+      const where =
+        targetHost === 'pi'
+          ? path.join(piAgentDir(), 'extensions')
+          : targetHost === 'pig'
+            ? path.join(pigAgentDir(), 'extensions')
+            : targetHost === 'opencode'
+              ? path.join(HOME, '.config', 'opencode', 'plugins', 'tersio')
+              : targetHost === 'dsh'
+                ? path.join(dshHome(), 'profiles', 'web')
+                : targetHost === 'codex'
+                  ? path.join(codexLocalMarketplaceRoot(), 'plugins', 'tersio')
+                  : path.join(OMP_AGENT_DIR, 'extensions');
+      console.log(`  target → ${where}`);
+    }
     console.log(`\nWill install into ${target.label}:`);
-    console.log(`  ${where}`);
     console.log(
       targetHost === 'codex'
         ? '  caveman · ponytail · pstack session modes'
         : '  caveman · rtk · ponytail session modes',
     );
-    console.log(`  session defaults → ${tersioSettingsFile()}`);
+    console.log(`  session defaults${verbose ? ` → ${tersioSettingsFile()}` : ''}`);
     const go = await askInteractiveConfirm(`Are you sure you want to install Tersio into ${target.label}?`);
     if (go.status !== 'confirmed' || !go.value) {
       closeRL();
@@ -1356,8 +1453,9 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
     }
   };
   const writeHostSettings = async (headroomOn: boolean, saveDefaults = true): Promise<void> => {
-    await writePluginSettings(profile, installOptions, { keepSharedModes: hostExplicit });
-    if (saveDefaults && hostExplicit && (choseDefaults || headroomEnabled)) {
+    // The report owns the output while it collects, so the store's line is a Configuration member.
+    await writePluginSettings(profile, installOptions, { keepSharedModes: hostExplicit, report: (line) => reportLine('config', line) });
+    if (saveDefaults && hostExplicit && (choseDefaults || headroomEnabled || codegraphChosen)) {
       await saveHostDefaults(
         targetHost,
         chosenFields,
@@ -1367,10 +1465,38 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
     }
   };
   const finishHost = (hint: string): void => {
+    if (!quiet) flushReport();
     if (failures.length > 0) console.log(`\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
     else console.log(hint);
     closeRL();
   };
+  // The bundle is optional: a failed download leaves the extension installed and the session
+  // bootstraps it later, so it warns instead of failing a run the rest of which succeeded.
+  // Every host that can reach CodeGraph keeps its telemetry off, whether it loads the extension or the MCP tool.
+  if (codegraphReachable(targetHost) && profile.codegraphDefault === 'on') {
+    // Only an extension host downloads at install: the MCP-only hosts bootstrap the bundle on first use.
+    if (supportsCodegraph(targetHost)) {
+      if (!resolveCodeGraphLibrary()) {
+        if (dryRun) {
+          if (!quiet) sayTagged('  [dry-run] would install the CodeGraph runtime');
+        } else if (process.env.PI_OFFLINE === '1') {
+          if (!quiet) sayTagged('  [warn] CodeGraph runtime is unavailable while offline.');
+        } else {
+          try {
+            const version = await installCodeGraphBundle();
+            if (!quiet) reportLine('optional', `🕸️ CodeGraph runtime ${version} installed`);
+          } catch (error) {
+            // shortError keeps the whole stderr; a warning line names the first one and stops.
+            const reason = shortError(error).split('\n')[0] ?? '';
+            sayTagged(`  [warn] CodeGraph runtime not installed (${reason}); a session will retry it.`);
+          }
+        }
+      }
+      await linkCodeGraphCliSummary(quiet);
+    }
+    // Telemetry stays off on every host, MCP-only ones included.
+    await disableCodeGraphTelemetry();
+  }
 
   if (targetHost === 'codex') {
     await capture('codex plugin', () => stepCodex(installOptions));
@@ -1436,10 +1562,8 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
   const pluginExtDir = path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions');
   const ownsTree = selfPlugin || dryRun;
   const extDir = ownsTree ? pluginExtDir : userExtDir;
-  if (!quiet)
-    console.log(
-      `  Add-ons load from: ${ownsTree ? 'the OMP plugin manifest' : 'the agent tree (plugin registration failed)'}`,
-    );
+  // A failed registration is the one case worth a line: the tree it fell back to is not the normal path.
+  if (!quiet && !ownsTree) console.log('  [note] plugin registration failed — add-ons load from the agent tree');
 
   await capture('shared', () => stepSharedSessionState(extDir, installOptions));
   await capture('rtk session', () => stepRtkSession(extDir, installOptions));
@@ -1449,13 +1573,21 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
   await capture('combo', () => stepCombo(extDir, installOptions));
   await capture('pstack', () => stepPstack(extDir, installOptions));
   await capture('headroom', () => stepHeadroom(extDir, installOptions));
+  await capture('codegraph', () => stepCodegraph(extDir, installOptions));
   await capture('commands', () => stepTersioCommands(extDir, installOptions));
   await capture('skills', () => stepOmpSkills(path.dirname(pluginExtDir), installOptions));
-  // One package, one file set: the repair writes every tree file here, so the install does too.
   if (ownsTree) await capture('plugin entry', () => stepPluginEntry(extDir, installOptions));
   if (ownsTree) await capture('plugin manifest', () => syncPluginManifest(path.dirname(pluginExtDir), installOptions));
   if (ownsTree) await capture('retired agent copies', () => stepRetireAgentCopies(userExtDir, installOptions));
+  // Retired FILE names, not dirs: the plugin tree ships a live `shared/`, so only the obsolete list may sweep it.
+  if (ownsTree)
+    await capture('retired tree files', async () => {
+      await reapObsoleteTreeDirs(extDir, installOptions);
+    });
+  // Settings is a Configuration step, so it writes before the report flushes and its line stays in that band.
   if (selfPlugin) await capture('settings', () => writeHostSettings(headroomEnabled));
+  // The omp path returns through here, not finishHost, so it flushes the same report on its own.
+  if (!quiet) flushReport();
 
   if (quiet) {
     if (failures.length > 0)

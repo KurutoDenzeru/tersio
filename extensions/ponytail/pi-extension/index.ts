@@ -1,16 +1,16 @@
 // Ponytail as a pi extension: the /ponytail command, the skill aliases, and the system-prompt injection.
 import {
-  DEFAULT_MODE,
-  RUNTIME_MODES,
-  getDefaultMode,
-  getHideStatus,
-  getQuietStartup,
-  isDeactivationCommand,
-  normalizeMode,
-  normalizePersistedMode,
-  writeDefaultMode,
+    DEFAULT_MODE,
+    getDefaultMode,
+    getHideStatus,
+    getQuietStartup,
+    isDeactivationCommand,
+    normalizeMode,
+    normalizePersistedMode,
+    RUNTIME_MODES,
+    writeDefaultMode,
 } from "../hooks/ponytail-config.ts";
-import { filterSkillBodyForMode, getPonytailInstructions } from "../hooks/ponytail-instructions.ts";
+import {filterSkillBodyForMode, getPonytailInstructions} from "../hooks/ponytail-instructions.ts";
 
 export { filterSkillBodyForMode };
 export const readDefaultMode = getDefaultMode;
@@ -264,7 +264,8 @@ export default function ponytailExtension(pi: PonytailApi): void {
     syncStatus(ctx);
   });
 
-  pi.on("before_agent_start", async (event) => {
+  pi.on("before_agent_start", async (event, ctx) => {
+    if (ctx?.sessionManager?.getBranch || ctx?.sessionManager?.getEntries) restoreSessionMode(ctx);
     if (!currentMode || currentMode === "off") {
       // Clear a stale section when the mode is off so a previous turn does not linger (#953).
       if (event?.systemPromptOptions?.sections) delete event.systemPromptOptions.sections.ponytail;

@@ -1,5 +1,5 @@
 // Quick start data model: the pipeline graph, its tables, and every derivation the canvas and the dialogs read. No JSX here, so the host surfaces stay in the component modules.
-import type { ModeState } from "./shell"
+import type {ModeState} from "./shell"
 
 export type Point = readonly [number, number]
 
@@ -18,7 +18,10 @@ export type EdgeKey =
   | "pstack"
   | "rtk"
   | "ponytail"
-
+  | "codegraph"
+  | "group-modes"
+  | "group-optional"
+  | "group-hosts";
 export type HostAction = "install" | "uninstall" | "update"
 
 /** `null` means this page has no answer yet: an exported file reads no settings, so it draws every node as lit. */
@@ -41,31 +44,40 @@ export type NodeId =
   | "headroom"
   | "rtk"
   | "ponytail"
-  | `host-${string}`
+  | "codegraph"
+  | `host-${string}`;
 
+/** A dashed frame the canvas draws around member nodes; its edge starts at the frame, not a member. */
+export type GroupId = "group-modes" | "group-optional" | "group-hosts"
+export type GraphEndpoint = NodeId | GroupId
 export interface GraphEdge {
-  from: NodeId
-  to: NodeId
+  from: GraphEndpoint
+  to: GraphEndpoint
 }
 
-/** The injection order: each block appends to the prompt in this sequence. */
-export const CHAIN = ["caveman", "pstack", "rtk", "ponytail"] as const
+/** The nodes one frame wraps. The prompt modes chain inside; the opt-in extras share their own band. */
+export const MODE_GROUP: readonly NodeId[] = ["caveman", "rtk", "ponytail"]
+export const OPTIONAL_GROUP: readonly NodeId[] = ["pstack", "headroom", "codegraph"]
 
-/** The turn order the chains read; each installed host hangs its agent node off the output. */
+/** The injection order: each block appends to the prompt in this sequence. */
+export const CHAIN = ["caveman", "rtk", "ponytail"] as const
+/** The turn order: the prompt modes chain member to member, and each band hands its work to the output with one line. */
 export function pipelineGraph(installedHosts: ReadonlyArray<string>): {
   nodes: NodeId[]
   edges: GraphEdge[]
 } {
-  const nodes: NodeId[] = ["prompt", ...CHAIN, "headroom", "output"]
+  // The opt-in extras are nodes of their own: they hang off the band, not the prompt chain.
+  const nodes: NodeId[] = ["prompt", ...CHAIN, "pstack", "headroom", "codegraph", "output"]
   for (const host of installedHosts) nodes.push(`host-${host}` as NodeId)
   const edges: GraphEdge[] = [
-    { from: "prompt", to: "caveman" },
-    ...CHAIN.slice(0, -1).map((id, i) => ({ from: id, to: CHAIN[i + 1] as NodeId })),
-    { from: "ponytail", to: "output" },
-    { from: "prompt", to: "headroom" },
-    { from: "headroom", to: "output" },
+    { from: "prompt", to: "group-modes" },
+    { from: "caveman", to: "rtk" },
+    { from: "rtk", to: "ponytail" },
+    { from: "group-modes", to: "output" },
+    { from: "group-optional", to: "output" },
   ]
-  for (const host of installedHosts) edges.push({ from: `host-${host}` as NodeId, to: "output" })
+  // One connector for the whole band, so ten agents still draw a single line into the output.
+  if (installedHosts.length > 0) edges.push({ from: "group-hosts", to: "output" })
   return { nodes, edges }
 }
 
@@ -96,6 +108,14 @@ export function edgePorts(s: Box, t: Box): { from: PortSide; to: PortSide } {
   const horizontal = hGap >= 24 && (vGap < 0 || hGap <= vGap)
   if (horizontal) return t.x >= s.x ? { from: "right", to: "left" } : { from: "left", to: "right" }
   return t.y >= s.y ? { from: "bottom", to: "top" } : { from: "top", to: "bottom" }
+}
+
+/** The ports a band edge uses: the frame faces the target by center direction, so a wide band never exits through its bottom when the target sits to its right. */
+export function framePorts(s: Box, t: Box): { from: PortSide; to: PortSide } {
+  const dx = t.x + t.w / 2 - (s.x + s.w / 2)
+  const dy = t.y + t.h / 2 - (s.y + s.h / 2)
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? { from: "right", to: "left" } : { from: "left", to: "right" }
+  return dy >= 0 ? { from: "bottom", to: "top" } : { from: "top", to: "bottom" }
 }
 
 const PORT_NORMAL: Record<PortSide, Point> = {
@@ -190,22 +210,14 @@ function curveClears(
   return true
 }
 
-const hits = (b: Box, boxes: ReadonlyArray<Box>, pad: number): boolean =>
-  boxes.some(
-    (o) =>
-      b.x < o.x + o.w + pad &&
-      b.x + b.w > o.x - pad &&
-      b.y < o.y + o.h + pad &&
-      b.y + b.h > o.y - pad,
-  )
 
+/** The connector between two boxes, bowed around everything in `others`; `ports` pins the sides a band edge has already chosen. */
 export function edgePath(
   s: Box,
   t: Box,
   others: ReadonlyArray<Box>,
-  groups: ReadonlyArray<Box> = [],
+  ports: { from: PortSide; to: PortSide } = edgePorts(s, t),
 ): string {
-  const ports = edgePorts(s, t)
   const sp = portPoint(s, ports.from)
   const tp = portPoint(t, ports.to)
   const dx = tp[0] - sp[0]
@@ -223,35 +235,33 @@ export function edgePath(
     c1: [sp[0] + outFrom[0] * reach + nx * lift, sp[1] + outFrom[1] * reach + ny * lift],
     c2: [tp[0] + outTo[0] * reach + nx * lift, tp[1] + outTo[1] * reach + ny * lift],
   })
-  // A line must miss every card, and should miss every folder band it does not belong to. The first lift that clears both wins; failing that, the first that clears the cards; failing that, the widest.
-  const foreign = groups.filter((g) => !hits(s, [g], 0) && !hits(t, [g], 0))
+  // Use the nearest curve that clears cards; routing around decorative group frames created oversized loops.
   const lifts = [0, 36, -36, 72, -72, 108, -108, 144, -144, 180, -180, 216, -216]
-  let cardSafe: { c1: Point; c2: Point } | null = null
   let chosen = at(0)
   for (const lift of lifts) {
     const curve = at(lift)
     chosen = curve
     const points = curveSamples(sp, curve.c1, curve.c2, tp, 28)
-    if (!curveClears(points, others, 14)) continue
-    cardSafe = curve
-    if (curveClears(points, foreign, 6)) break
+    if (curveClears(points, others, 14)) break
   }
-  const pick = cardSafe ?? chosen
-  return `M${sp[0]} ${sp[1]} C${pick.c1[0]} ${pick.c1[1]}, ${pick.c2[0]} ${pick.c2[1]}, ${tp[0]} ${tp[1]}`
+  return `M${sp[0]} ${sp[1]} C${chosen.c1[0]} ${chosen.c1[1]}, ${chosen.c2[0]} ${chosen.c2[1]}, ${tp[0]} ${tp[1]}`
 }
 
-/** The default view: a 2x2 mode block (pstack/rtk over caveman/ponytail), headroom above, output right, hosts in three columns below. */
+/** The default view: the prompt band in the center, prompt left, the opt-in extras above, output right, hosts below. */
 export function defaultPositions(installedHosts: ReadonlyArray<string>): Record<string, Box> {
   const HOST_COLUMNS = 3
   const HOST_ROW_STEP = NODE_H + 80
   const positions: Record<string, Box> = {
-    prompt: { x: 40, y: 320, w: NODE_W, h: NODE_H },
-    caveman: { x: 320, y: 320, w: NODE_W, h: NODE_H },
-    pstack: { x: 320, y: 200, w: NODE_W, h: NODE_H },
-    rtk: { x: 592, y: 200, w: NODE_W, h: NODE_H },
-    ponytail: { x: 592, y: 320, w: NODE_W, h: NODE_H },
-    headroom: { x: 464, y: 56, w: NODE_W, h: NODE_H },
-    output: { x: 904, y: 320, w: NODE_W, h: NODE_H },
+    prompt: { x: 40, y: 264, w: NODE_W, h: NODE_H },
+    // Default Feedback: the three always-on prompt modes, one row.
+    caveman: { x: 320, y: 264, w: NODE_W, h: NODE_H },
+    rtk: { x: 592, y: 264, w: NODE_W, h: NODE_H },
+    ponytail: { x: 864, y: 264, w: NODE_W, h: NODE_H },
+    // Optional Feedback: the opt-in extras, one row above the feedback band.
+    pstack: { x: 320, y: 56, w: NODE_W, h: NODE_H },
+    headroom: { x: 592, y: 56, w: NODE_W, h: NODE_H },
+    codegraph: { x: 864, y: 56, w: NODE_W, h: NODE_H },
+    output: { x: 1136, y: 264, w: NODE_W, h: NODE_H },
   }
   // The agent band: the host card is taller because it lists its live modes, and a fourth host starts a new row under the first column.
   installedHosts.forEach((host, i) => {
@@ -265,29 +275,40 @@ export function defaultPositions(installedHosts: ReadonlyArray<string>): Record<
   return positions
 }
 
-const POSITIONS_KEY = "tersio.pipeline.positions.v1"
+const POSITIONS_KEY = "tersio.pipeline.positions"
+/** A layout saved before a grouping change fights the new frames, so the payload carries its own version. */
+const POSITIONS_LAYOUT = 3
 
-/** Node positions survive reloads; a corrupt or missing store falls back to the default layout. */
+/** A stored box worth keeping: every field a Box needs. */
+function isBox(value: unknown): value is Box {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Box).x === "number" &&
+    typeof (value as Box).y === "number" &&
+    typeof (value as Box).w === "number" &&
+    typeof (value as Box).h === "number"
+  )
+}
+
+/** Clean the boxes of a versioned payload, so a stale entry never pins a node. */
+function boxesOf(payload: Record<string, unknown>): Record<string, Box> | null {
+  if (payload.layout !== POSITIONS_LAYOUT) return null
+  const raw = payload.boxes
+  if (typeof raw !== "object" || raw === null) return null
+  const clean: Record<string, Box> = {}
+  for (const [id, box] of Object.entries(raw)) if (isBox(box)) clean[id] = box
+  return Object.keys(clean).length > 0 ? clean : null
+}
+
+/** Node positions survive reloads; a corrupt, older, or missing store falls back to the default layout. */
 export function loadPositions(): Record<string, Box> | null {
   try {
     const raw = localStorage.getItem(POSITIONS_KEY)
     if (!raw) return null
     const parsed: unknown = JSON.parse(raw)
     if (!parsed || typeof parsed !== "object") return null
-    const boxes = parsed as Record<string, unknown>
-    const clean: Record<string, Box> = {}
-    for (const [id, box] of Object.entries(boxes)) {
-      if (
-        box &&
-        typeof box === "object" &&
-        typeof (box as Box).x === "number" &&
-        typeof (box as Box).y === "number" &&
-        typeof (box as Box).w === "number" &&
-        typeof (box as Box).h === "number"
-      )
-        clean[id] = box as Box
-    }
-    return Object.keys(clean).length > 0 ? clean : null
+    return boxesOf(parsed as Record<string, unknown>)
   } catch {
     return null
   }
@@ -295,10 +316,16 @@ export function loadPositions(): Record<string, Box> | null {
 
 export function savePositions(positions: Record<string, Box>): void {
   try {
-    localStorage.setItem(POSITIONS_KEY, JSON.stringify(positions))
+    localStorage.setItem(POSITIONS_KEY, JSON.stringify({ layout: POSITIONS_LAYOUT, boxes: positions }))
   } catch {
     // Private mode: the layout just does not persist.
   }
+}
+
+/** The server copy of the same store: only a layout the client wrote back at this version merges. */
+export function storedPositionsVersion(server: Record<string, unknown> | null): Record<string, Box> {
+  if (!server) return {}
+  return boxesOf(server) ?? {}
 }
 
 /** `/health` reports `omp/18.12.6` and `codex-cli 0.167.0-alpha.3.2`, so the node keeps only the version. */
@@ -332,15 +359,24 @@ export const HOSTS = [
   { id: "claude", label: "Claude Code" },
 ] as const
 
+/**
+ * Hosts whose CodeGraph reach is the shared MCP tool only: no extension to load and no edit hook to gate.
+ * Codex left this list when its hook started reading the flag; DeepSeek Harness mounts the MCP tool too.
+ */
+export const NO_EXTENSION_HOSTS: Readonly<Record<string, true | undefined>> = {
+  claude: true,
+}
+
 const HOST_FIELDS: Record<
   string,
-  "cavemanDefault" | "rtkDefault" | "ponytailDefault" | "pstackDefault" | "headroomDefault"
+  "cavemanDefault" | "rtkDefault" | "ponytailDefault" | "pstackDefault" | "headroomDefault" | "codegraphDefault"
 > = {
   caveman: "cavemanDefault",
   rtk: "rtkDefault",
   headroom: "headroomDefault",
   ponytail: "ponytailDefault",
   pstack: "pstackDefault",
+  codegraph: "codegraphDefault",
 }
 
 /** What each mode reads to for one agent: its own section first, the shared store underneath. */
@@ -387,6 +423,12 @@ export function agentModeRows(
       label: String(read("pstack") ?? "off"),
       on: String(read("pstack") ?? "off") !== "off",
     },
+    {
+      key: "codegraph",
+      glyph: "🕸️",
+      label: NO_EXTENSION_HOSTS[host] ? "n/a" : String(read("codegraph") ?? "on"),
+      on: !NO_EXTENSION_HOSTS[host] && String(read("codegraph") ?? "on") === "on",
+    },
   ]
 }
 
@@ -426,11 +468,17 @@ export const MODES = [
     role: "size",
     note: "smallest complete change",
   },
+  {
+    key: "codegraph",
+    glyph: "🕸️",
+    name: "codegraph",
+    role: "graph",
+    note: "index for symbol search and blast radius",
+  },
 ] as const
-
 /** The nodes a click can set, the field each writes, and the levels that field takes. Every per-agent preset shares the combo entry. */
 export const PICKER: Record<
-  "combo" | "caveman" | "rtk" | "ponytail" | "pstack" | "headroom",
+  "combo" | "caveman" | "rtk" | "ponytail" | "pstack" | "headroom" | "codegraph",
   { field: string; options: ReadonlyArray<{ id: string; label: string }> }
 > = {
   combo: {
@@ -484,7 +532,23 @@ export const PICKER: Record<
       { id: "on", label: "On" },
     ],
   },
+  codegraph: {
+    field: "codegraphDefault",
+    options: [
+      { id: "off", label: "Off" },
+      { id: "on", label: "On (auto-sync)" },
+    ],
+  },
 }
+
+/** The sync intervals the CodeGraph index can follow; `live` is the file watcher, the rest are timers. */
+export const CODEGRAPH_SYNC_OPTIONS = [
+  { id: "live", label: "Live (watcher)" },
+  { id: "5m", label: "Every 5 min" },
+  { id: "15m", label: "Every 15 min" },
+  { id: "1h", label: "Hourly" },
+  { id: "manual", label: "Manual" },
+] as const
 
 /** The session-start defaults one scope carries; `comboLevel` exists only on the shared store. */
 export interface DefaultsPayload {
@@ -495,6 +559,8 @@ export interface DefaultsPayload {
   ponytailDefault: string
   pstackDefault: string
   headroomDefault: string
+  codegraphDefault: string
+  codegraphSync: string
 }
 
 export const DEFAULT_ROWS_UI: Array<{
@@ -504,67 +570,77 @@ export const DEFAULT_ROWS_UI: Array<{
   hint: string
   options: Array<{ id: string; label: string }>
 }> = [
-  {
-    field: "comboDefault",
-    label: "Combo preset",
-    glyph: "🧩",
-    hint: "Sets caveman, RTK and Ponytail together. pstack is separate.",
-    options: [
-      { id: "off", label: "Off" },
-      { id: "lite", label: "Lite (recommended)" },
-      { id: "balanced", label: "Balanced" },
-      { id: "max", label: "Max" },
-      { id: "custom", label: "Custom" },
-    ],
-  },
-  {
-    field: "cavemanDefault",
-    label: "Caveman",
-    glyph: "🪨",
-    hint: "Terse-reply mode for a new or resumed session.",
-    options: [
-      { id: "off", label: "Off" },
-      { id: "lite", label: "Lite" },
-      { id: "full", label: "Full" },
-      { id: "ultra", label: "Ultra" },
-      { id: "megacave-lite", label: "Megacave lite" },
-      { id: "megacave-full", label: "Megacave full" },
-      { id: "megacave-ultra", label: "Megacave ultra" },
-    ],
-  },
-  {
-    field: "rtkDefault",
-    label: "RTK",
-    glyph: "🗜️",
-    hint: "Rewrite eligible Bash calls through rtk.",
-    options: [
-      { id: "on", label: "On" },
-      { id: "off", label: "Off" },
-    ],
-  },
-  {
-    field: "ponytailDefault",
-    label: "Ponytail",
-    glyph: "🧠",
-    hint: "Lazy-code mode for a new or resumed session.",
-    options: [
-      { id: "off", label: "Off" },
-      { id: "lite", label: "Lite" },
-      { id: "full", label: "Full" },
-      { id: "ultra", label: "Ultra" },
-    ],
-  },
-  {
-    field: "pstackDefault",
-    label: "pstack",
-    glyph: "🥔",
-    hint: "Rigor mode. Opt-in, so no preset turns it on or off.",
-    options: [
-      { id: "off", label: "Off" },
-      { id: "on", label: "On" },
-    ],
-  },
-]
+    {
+      field: "comboDefault",
+      label: "Combo preset",
+      glyph: "🧩",
+      hint: "Sets caveman, RTK and Ponytail together. pstack is separate.",
+      options: [
+        { id: "off", label: "Off" },
+        { id: "lite", label: "Lite (recommended)" },
+        { id: "balanced", label: "Balanced" },
+        { id: "max", label: "Max" },
+        { id: "custom", label: "Custom" },
+      ],
+    },
+    {
+      field: "cavemanDefault",
+      label: "Caveman",
+      glyph: "🪨",
+      hint: "Terse-reply mode for a new or resumed session.",
+      options: [
+        { id: "off", label: "Off" },
+        { id: "lite", label: "Lite" },
+        { id: "full", label: "Full" },
+        { id: "ultra", label: "Ultra" },
+        { id: "megacave-lite", label: "Megacave lite" },
+        { id: "megacave-full", label: "Megacave full" },
+        { id: "megacave-ultra", label: "Megacave ultra" },
+      ],
+    },
+    {
+      field: "rtkDefault",
+      label: "RTK",
+      glyph: "🗜️",
+      hint: "Rewrite eligible Bash calls through rtk.",
+      options: [
+        { id: "on", label: "On" },
+        { id: "off", label: "Off" },
+      ],
+    },
+    {
+      field: "ponytailDefault",
+      label: "Ponytail",
+      glyph: "🧠",
+      hint: "Lazy-code mode for a new or resumed session.",
+      options: [
+        { id: "off", label: "Off" },
+        { id: "lite", label: "Lite" },
+        { id: "full", label: "Full" },
+        { id: "ultra", label: "Ultra" },
+      ],
+    },
+    {
+      field: "pstackDefault",
+      label: "pstack",
+      glyph: "🥔",
+      hint: "Rigor mode. Opt-in, so no preset turns it on or off.",
+      options: [
+        { id: "off", label: "Off" },
+        { id: "on", label: "On" },
+      ],
+    },
+    {
+      field: "codegraphDefault",
+      label: "CodeGraph",
+      glyph: "🕸️",
+      hint: "On creates and syncs the local index. Off disables automatic indexing; manual CodeGraph tools remain available.",
+      options: [
+        { id: "off", label: "Off" },
+        { id: "on", label: "On" },
+      ],
+    },
+  ]
 
 export const OFF_DEFAULTS: DefaultsPayload = {
   comboDefault: "off",
@@ -574,6 +650,8 @@ export const OFF_DEFAULTS: DefaultsPayload = {
   ponytailDefault: "off",
   pstackDefault: "off",
   headroomDefault: "off",
+  codegraphDefault: "on",
+  codegraphSync: "live",
 }
 
 /** What the option surface says about a node. */
@@ -593,6 +671,7 @@ export const ABOUT: Partial<Record<NodeId, string>> = {
   rtk: "Tooling. Rewrites a shell command and condenses its output before the model sees it.",
   ponytail: "Size. Caps the diff at the smallest complete change.",
   output: "The turn's result: what the agent answers after every block applied.",
+  codegraph: "Indexes code structure for symbol search and blast-radius analysis; sync schedule is configured separately.",
 }
 
 export interface ModeVersionRow {
@@ -622,9 +701,17 @@ export const quickStartLast: {
 
 /** One definition of a node's live state, read by the canvas and the dialogs alike. */
 export function edgeLit(key: EdgeKey, modes: ModeState | null, hostState: HostState): Lit {
-  if (key === "hosts") {
+  if (key === "hosts" || key === "group-hosts") {
     const installed = Object.values(hostState.installed)
     return installed.length ? installed.some(Boolean) : null
+  }
+  if (key === "group-modes") {
+    if (!modes) return null
+    return MODE_GROUP.some((id) => !isOff(edgeLit(id as EdgeKey, modes, hostState)))
+  }
+  if (key === "group-optional") {
+    if (!modes) return null
+    return OPTIONAL_GROUP.some((id) => !isOff(edgeLit(id as EdgeKey, modes, hostState)))
   }
   if (key === "omp" || key === "pi" || key === "opencode") {
     const installed = hostState.installed[key]
@@ -647,6 +734,7 @@ export function edgeLit(key: EdgeKey, modes: ModeState | null, hostState: HostSt
   if (key === "caveman") return modes.cavemanDefault !== "off"
   if (key === "ponytail") return modes.ponytailDefault !== "off"
   if (key === "headroom") return modes.headroomDefault !== "off"
+  if (key === "codegraph") return modes.codegraphDefault !== "off"
   return modes.pstackDefault !== "off"
 }
 
@@ -666,7 +754,6 @@ export function nodeState(
   if (id.startsWith("host-")) {
     const key = id.slice(5)
     const on = edgeLit(key as EdgeKey, modes, hostState)
-    // The version alone: "installed" and "routed" read as status, and a bar already shows the route.
     return { label: isOff(on) ? "not installed" : (versionOf(hostState.versions[key]) ?? ""), on }
   }
   if (id === "caveman" || id === "ponytail") {
@@ -675,6 +762,10 @@ export function nodeState(
     return { label: isOff(on) ? "off" : level || "on", on }
   }
   if (id === "pstack" || id === "headroom" || id === "rtk") {
+    const on = edgeLit(id, modes, hostState)
+    return { label: isOff(on) ? "off" : "on", on }
+  }
+  if (id === "codegraph") {
     const on = edgeLit(id, modes, hostState)
     return { label: isOff(on) ? "off" : "on", on }
   }
@@ -688,7 +779,8 @@ export function nodeOff(id: NodeId, modes: ModeState | null, hostState: HostStat
     id === "pstack" ||
     id === "headroom" ||
     id === "rtk" ||
-    id === "ponytail"
+    id === "ponytail" ||
+    id === "codegraph"
   ) {
     return isOff(edgeLit(id, modes, hostState))
   }
@@ -737,6 +829,13 @@ export function nodeValue(
     }
     return modes.rtkDefault ? "on" : "off"
   }
+  if (id === "codegraph") {
+    if (scope !== "all") {
+      const own = modes.hosts?.[scope]?.codegraphDefault
+      if (typeof own === "string") return own
+    }
+    return modes.codegraphDefault
+  }
   return null
 }
 
@@ -745,10 +844,9 @@ export function nodeGlyph(id: NodeId): string | null {
   if (id === "output") return null
   return MODES.find((mm) => mm.key === id)?.glyph ?? null
 }
-
-/** An exported file has no server, so a failed read leaves the hosts unknown and every node lit. */
 export function readHosts(): Promise<Array<{ id: string; installed: boolean }> | null> {
   return fetch("/api/hosts")
     .then((r) => (r.ok ? r.json() : null))
     .catch(() => null)
 }
+
