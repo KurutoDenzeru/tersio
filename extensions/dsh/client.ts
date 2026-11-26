@@ -1,6 +1,13 @@
 // Tersio's Web status bar: a pill under the composer that reads the combo and opens a mode switcher.
 // Authored in TypeScript; tsc emits the browser bundle to dist/, so no .js is checked in.
-type Modes = { caveman: string; rtk: boolean; ponytail: string; pstack: string | boolean; headroom: string };
+type Modes = {
+  caveman: string;
+  rtk: boolean;
+  ponytail: string;
+  pstack: string | boolean;
+  headroom: string;
+  codegraph: string;
+};
 type StatusPayload = { text: string; level: string; modes: Modes };
 type Change = { combo?: string; mode?: string; value?: string };
 
@@ -52,6 +59,7 @@ type Loader = { load(spec: { id: string; factory(require: (name: string) => unkn
     { key: 'headroom', glyph: '🍃', name: 'Headroom', values: ['off', 'on'] },
     { key: 'ponytail', glyph: '🧠', name: 'Ponytail', values: ['off', 'lite', 'full', 'ultra'] },
     { key: 'pstack', glyph: '🥔', name: 'pstack', values: ['off', 'on'] },
+    { key: 'codegraph', glyph: '🕸️', name: 'CodeGraph', values: ['off', 'on'] },
   ] as const;
 
   /** `lite` -> `Lite`, `megacave-lite` -> `Megacave lite`: full words, never an invented abbreviation. */

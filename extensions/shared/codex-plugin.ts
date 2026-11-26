@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { getPonytailInstructions } from '../ponytail/hooks/ponytail-instructions.ts';
 import { deriveLevel, normalizeInputCommand, normalizeMode } from './session-state.ts';
 import { formatStatus } from './status.ts';
-import { readPluginSettings } from './plugin-settings.ts';
+import { readCodegraphDefault, readPluginSettings } from './plugin-settings.ts';
 import { CODEX_PLUGIN_FILES, codexHome, codexPackagedPluginDir } from './codex-state.ts';
 import { ruleDir, tersioHome } from './utils.ts';
 
@@ -254,8 +254,8 @@ export function codexStatusLine(sessionId?: unknown): string {
     ponytail: normalizeMode('ponytail', readMode('ponytailDefault', sessionId)) ?? 'off',
     pstack: normalizeMode('pstack', readMode('pstackDefault', sessionId)) ?? 'off',
     headroom: normalizeMode('headroom', readMode('headroomDefault', sessionId)) ?? 'off',
-    // Codex does not load the CodeGraph extension, so it reads as off here.
-    codegraph: 'off',
+    // Codex loads no CodeGraph extension, but its edit-sync hook rides the same flag, so it reads the stored default.
+    codegraph: readCodegraphDefault('codex'),
   };
   return formatStatus({ level: deriveLevel(modes), ...modes });
 }
@@ -314,7 +314,7 @@ export function codexSlashCommand(
   sessionId?: unknown,
 ): { patch: CodexModePatch; message: string } | null {
   const text = normalizeInputCommand(prompt);
-  const match = text.match(/^\/(combo|caveman|ponytail|pstack|rtk|headroom|tersio)(?:\s+(.+))?$/);
+  const match = text.match(/^\/(combo|caveman|ponytail|pstack|rtk|headroom|codegraph|tersio)(?:\s+(.+))?$/);
   if (!match) return null;
   const command = match[1]!;
   const value = (match[2] ?? '').trim().toLowerCase();
@@ -381,7 +381,20 @@ export function codexSlashCommand(
       message: `Tersio headroom set to ${level} for Codex. The endpoint route applies at install or from the dashboard switch.`,
     };
   }
-  return { patch: {}, message: 'Tersio: use /combo, /caveman, /ponytail, /pstack, /rtk, or /headroom.' };
+  if (command === 'codegraph') {
+    const key = 'codegraphDefault';
+    if (!value || value === 'status') {
+      const current = readCodegraphDefault('codex');
+      return { patch: {}, message: `Tersio codegraph is ${current}. Use /codegraph on or /codegraph off.` };
+    }
+    if (value !== 'on' && value !== 'off')
+      return { patch: {}, message: `Tersio codegraph: unknown value "${value}". Use on or off.` };
+    return {
+      patch: { [key]: value },
+      message: `Tersio codegraph set to ${value} for Codex. The index sync hook follows the same switch.`,
+    };
+  }
+  return { patch: {}, message: 'Tersio: use /combo, /caveman, /ponytail, /pstack, /rtk, /headroom, or /codegraph.' };
 }
 
 /**

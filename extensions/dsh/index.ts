@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { homeDir, resolveRtkBinary, tersioHome } from '../shared/utils.ts';
 import { formatModeLine, MODE_GLYPHS, type ModeSnapshot } from '../shared/mode-notice.ts';
+import { readCodegraphDefault } from '../shared/plugin-settings.ts';
 import { rewriteThroughRtk, rewriteToolArguments } from '../shared/rtk-rewrite.ts';
 
 const execShellP = promisify(exec);
@@ -284,8 +285,8 @@ function readModes(store: Store, section: Store): ModeSnapshot {
     // dsh is a native route host: the installer points the provider at Headroom's proxy, so the stored
     // default is the truth and the bar reports it instead of promising a mode the host cannot honour.
     headroom: setting(store, section, 'headroomDefault') === 'on' ? 'on' : 'off',
-    // DSH does not load the CodeGraph extension, so it reads as off here.
-    codegraph: 'off',
+    // DSH mounts the CodeGraph search through its MCP bundle, so the stored default is what it reports.
+    codegraph: readCodegraphDefault('dsh'),
   };
 }
 
@@ -332,6 +333,7 @@ const SWITCHABLE: Record<string, readonly string[]> = {
   ponytail: ['off', 'lite', 'full', 'ultra'],
   pstack: ['off', 'on'],
   headroom: ['off', 'on'],
+  codegraph: ['off', 'on'],
 };
 
 function applySwitch(mode: string, value: string): boolean {
@@ -518,6 +520,22 @@ function registerCommands(ctx: DshCtx): void {
           section.pstackDefault = on ? 'on' : 'off';
         });
         return { kind: 'success', text: `pstack ${on ? 'on' : 'off'}: ${modes}` };
+      },
+    },
+    {
+      name: 'codegraph',
+      description: 'Turn the CodeGraph search on or off',
+      input: { hint: 'on | off' },
+      handler: async ({ rawInput }) => {
+        const raw = String(rawInput || '')
+          .trim()
+          .toLowerCase();
+        const on = raw === 'on' ? true : raw === 'off' ? false : null;
+        if (on === null) return { kind: 'success', text: 'Usage: /codegraph on | /codegraph off' };
+        const modes = applyModeChange((section) => {
+          section.codegraphDefault = on ? 'on' : 'off';
+        });
+        return { kind: 'success', text: `CodeGraph ${on ? 'on' : 'off'}: ${modes}` };
       },
     },
     {

@@ -2,10 +2,8 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Icon } from "@/components/icon"
-import { MarkGlyph } from "@/components/brand"
 import { useToast } from "@/components/toaster"
 import { useAgentData } from "@/lib/data"
-import { shareUrl } from "@/lib/share"
 import { AGENT_RANGE_LABEL } from "@/lib/data"
 import {
   STRIP_MAX_WEEKS,
@@ -19,7 +17,6 @@ import {
 } from "@/lib/graph"
 import type { ActivityBar, GraphCell, GraphStreaks, MonthBand } from "@/lib/graph"
 import type { AgentRange, AgentStats } from "@/lib/data"
-import type { ShareTarget } from "@/lib/share"
 import { fmt, fmtElapsed, fmtShort, pct } from "@/lib/format"
 
 /** The figures the card and the share text both read. */
@@ -75,15 +72,6 @@ function cardOf(agent: AgentStats): Card {
   }
 }
 
-/** The days a live streak covers, so the graph can ring them. */
-function streakDays(streaks: GraphStreaks): Set<number> {
-  const set = new Set<number>()
-  const { current } = streaks
-  if (current.days <= 0 || current.endTs === null) return set
-  for (let ts = current.startTs ?? current.endTs; ts <= current.endTs; ts += 86_400_000) set.add(ts)
-  return set
-}
-
 /** The card, rasterized for a PNG and inlined for the preview. Width is fixed; height follows the layout. */
 const CARD_W = 1200
 const CARD_H = 850
@@ -109,7 +97,6 @@ function cardSvg(card: Card, money: (v: number) => string, brand: string | null)
   const gridLeft = left + 44
   const emptyInk = token("--cell-0", "rgba(24,24,27,.07)")
   const levelInk = [emptyInk, ...[1, 2, 3, 4].map((level) => token(`--cell-${level}`, accent))]
-  const ring = streakDays(card.streaks)
   const s = card.streaks
   const figure = (x: number, y: number, label: string, value: string): string =>
     `<text x="${x}" y="${y}" font-family="monospace" font-size="20" letter-spacing="3" fill="${dim}">${e(label)}</text>` +
@@ -178,20 +165,12 @@ function cardSvg(card: Card, money: (v: number) => string, brand: string | null)
       months +=
         `<text x="${left}" y="${y + Math.round(cell * 0.82)}" font-family="monospace" font-size="20" font-weight="bold" letter-spacing="2" fill="${ink}">${e(band.label.toUpperCase())}</text>` +
         `<text x="${left}" y="${y + cell + 15}" font-family="monospace" font-size="13" letter-spacing="1" fill="${dim}">${e(String(band.year))}</text>`
-      const ringed: number[] = []
       for (const [d, c] of band.cells.entries()) {
         const x = bandLeft + d * (cell + gap)
         // A day before the window opened still draws a lighter box, so the row keeps its length and the edge stays visible.
         const fill = c.level > 0 ? levelInk[c.level] : emptyInk
         const opacity = c.inWindow ? 1 : 0.3
-        if (ring.has(c.ts)) ringed.push(d)
         graph += `<g><title>${e(band.title)} ${new Date(c.ts).getUTCDate()}: ${fmtShort(c.tokens)} tokens${c.inWindow ? "" : " (outside the range)"}</title><rect x="${x}" y="${y}" width="${cell}" height="${cell}" rx="${Math.min(4, Math.round(cell / 5))}" fill="${fill}" opacity="${opacity}"/></g>`
-      }
-      // One outline around the whole live run, not per cell: overlapping boxes read as a scalloped bracket.
-      if (ringed.length > 0) {
-        const x0 = bandLeft + ringed[0]! * (cell + gap) - 3
-        const x1 = bandLeft + ringed[ringed.length - 1]! * (cell + gap) + cell + 3
-        graph += `<rect x="${x0}" y="${y - 3}" width="${x1 - x0}" height="${cell + 6}" rx="${Math.min(7, Math.round(cell / 3))}" fill="none" stroke="${accent}" stroke-width="2"/>`
       }
     }
     // The legend sits at the bottom right of the graph region, as GitHub's own does.
@@ -227,36 +206,23 @@ function cardSvg(card: Card, money: (v: number) => string, brand: string | null)
       months += `<text x="${left}" y="${y}" font-family="monospace" font-size="15" letter-spacing="1" fill="${dim}">${e(weekText[i]!)}</text>`
     }
     // Month labels sit above the column opening the month; one touching the previous drops, so the row never collides.
+    // Column zero is the Sunday before the window, so it usually carries the previous month's name in its first days.
+    // Labelling it would print that month twice, so only a month that starts inside the grid earns a label.
     const seenMonths = new Set<string>()
     let lastLabelX = -Infinity
-    // The live run's first and last column, so one outline can wrap it.
-    let ringFrom = -1
-    let ringTo = -1
-    for (const [i, c] of card.graph.entries()) {
+    for (const c of card.graph) {
       const x = startLeft + c.week * colWidth
       const y = top + c.day * (cell + gap)
       const fill = levelInk[c.level] ?? levelInk[0]!
       const at = new Date(c.ts)
       graph += `<g><title>${e(at.toISOString().slice(0, 10))}: ${fmtShort(c.tokens)} tokens</title><rect x="${x}" y="${y}" width="${cell}" height="${cell}" rx="${radius}" fill="${fill}"/></g>`
-      if (ring.has(c.ts)) {
-        if (ringFrom < 0) ringFrom = i
-        ringTo = i
-      }
-      if (c.day === 0 && !seenMonths.has(c.month) && x - lastLabelX >= 48) {
+      // The first week only earns a label when the month itself opens there; a column that merely catches
+      // the tail of an earlier month would print that month twice.
+      if (c.day === 0 && at.getUTCDate() <= 7 && !seenMonths.has(c.month) && x - lastLabelX >= 48) {
         seenMonths.add(c.month)
         lastLabelX = x
         months += `<text x="${x}" y="${top - 10}" font-family="monospace" font-size="17" letter-spacing="1" fill="${dim}">${e(at.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" }))}</text>`
       }
-    }
-    // One outline around the run, not one per cell.
-    if (ringFrom >= 0) {
-      const first = card.graph[ringFrom]!
-      const last = card.graph[ringTo]!
-      const x0 = startLeft + first.week * colWidth - 3
-      const x1 = startLeft + last.week * colWidth + cell + 3
-      const y0 = top + Math.min(first.day, last.day) * (cell + gap) - 3
-      const y1 = top + Math.max(first.day, last.day) * (cell + gap) + cell + 3
-      graph += `<rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" rx="${Math.min(7, Math.round(cell / 3))}" fill="none" stroke="${accent}" stroke-width="2"/>`
     }
     const legendY = top + 7 * colWidth + 18
     const lessW = 46
@@ -432,6 +398,46 @@ export function ShareDialog({
     toast("Saved", "Card downloaded as PNG.", "download")
   }
 
+  /**
+   * Hands the card to the operating system's own share sheet, which is the only channel that carries file bytes
+   * to another app. The sheet lists whatever the machine has installed, so one button covers every network
+   * without Tersio naming any of them. The PNG travels as a real `File`, so the target receives an attachment.
+   *
+   * A platform without file sharing falls back to the clipboard: the picture is copied and a note says to paste.
+   */
+  const shareCard = async (): Promise<void> => {
+    if (!card) return
+    setBusy(true)
+    const blob = await raster()
+    setBusy(false)
+    if (!blob) {
+      toast("Share failed", "Browser blocked the render.", "circle-exclamation-point")
+      return
+    }
+
+    if (typeof navigator.canShare === "function") {
+      const file = new File([blob], "tersio-usage.png", { type: "image/png" })
+      if (navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], text })
+          return
+        } catch (error) {
+          // A cancelled sheet is the user's choice, not a failure.
+          if ((error as Error)?.name === "AbortError") return
+        }
+      }
+    }
+
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })])
+      toast("Image copied", "This system has no share sheet here; paste the image where you need it.", "image")
+      return
+    } catch {
+      /* no image clipboard either: the file itself is still available below */
+    }
+    toast("Paste the image", "Copy it from the button below, then paste it where you need it.", "image")
+  }
+
   // The clipboard gets the picture; a browser without image clipboard still gets the file, pasting into most hosts.
   const copyImage = async (): Promise<void> => {
     if (!card) return
@@ -495,25 +501,15 @@ export function ShareDialog({
         />
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          {(["x", "reddit", "linkedin"] as ShareTarget[]).map((target) => (
-            <a
-              key={target}
-              href={
-                card
-                  ? shareUrl(
-                      target,
-                      target === "linkedin" ? {} : { text, title: "My Tersio usage profile" },
-                    )
-                  : "#"
-              }
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-3 py-[7px] text-xs text-ink no-underline hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
-            >
-              <MarkGlyph slug={target} className="size-3.5 shrink-0" />
-              <span>{target === "x" ? "X" : target === "reddit" ? "Reddit" : "LinkedIn"}</span>
-            </a>
-          ))}
+          <button
+            type="button"
+            disabled={busy || !card}
+            onClick={() => void shareCard()}
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-3 py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96] disabled:opacity-50"
+          >
+            <Icon name="share-2" className="size-3.5 shrink-0" />
+            <span>Share</span>
+          </button>
           <span className="ml-auto flex items-center gap-2">
             <button
               type="button"

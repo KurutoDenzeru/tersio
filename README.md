@@ -8,7 +8,7 @@
 [![Build](https://shieldcn.dev/github/ci/KurutoDenzeru/tersio.svg?variant=branded&size=xs&logo=githubactions&label=Build)](https://github.com/KurutoDenzeru/tersio/actions)
 [![MIT](https://shieldcn.dev/badge/license-MIT-2563eb.svg?variant=branded&size=xs&logo=opensourceinitiative)](./LICENSE)
 
-Token saver & usage tracker for coding agents: terse caveman replies, compact RTK shell output, lean Ponytail code, Headroom compression, pstack rigor, and a gain dashboard — one-command combos over one shared extension tree.
+Token saver & usage tracker for coding agents: Caveman, RTK, Ponytail, Headroom, pstack, CodeGraph, and a gain dashboard — one-command combos over one shared extension tree.
 
 
 ## 🎯 What this is, and why you would use it
@@ -139,8 +139,6 @@ Add this entry under `mcpServers` in the client's MCP settings:
 }
 ```
 
-That is all of it, with no port or token to set up. `tersio install` adds the same entry for OMP, Pi, PiG, and OpenCode, and asks before it touches anything. DeepSeek Harness already carries the entry in its bundle.
-
 For development, use an absolute Bun command with `args: ["/absolute/path/to/tersio/tersio.ts", "mcp"]`. A source checkout uses its own entry when creating an MCP registration, instead of another global installation. Existing server commands are preserved; restart the MCP server after changing one. This does not switch the installed agent extensions or an already running dashboard.
 
 Your agent then gets seven tools:
@@ -177,30 +175,12 @@ Flags: `--dry-run`, `--yes`/`-y`, `--verbose`, `--combo-default`/`--caveman-defa
 
 pstack is an adapted fork pinned in each Tersio release. `tersio update --host <agent>` installs that release's copy; newer upstream changes first need review and a new Tersio release.
 
-## 🕸️ CodeGraph
-
-**CodeGraph** keeps a local graph of your code: symbols, callers, dependencies, and blast radius. The agent asks what a change touches instead of reading whole files. It is on by default; the index is built for you, and `tersio codegraph init` builds it by hand.
-
-For OMP, pi, PiG, and OpenCode, Tersio installs the official platform-specific CodeGraph bundle during setup. A host-native plugin install downloads it in the background at the first session if it is missing. The download needs npm, network access, and several hundred MB of disk space. Tersio stores its bundle under `~/.tersio/codegraph/bundles`; an existing CodeGraph bundle or `CODEGRAPH_LIB_PATH` is left in place. `tersio update` checks for a newer bundle. With `PI_OFFLINE=1`, Tersio does not download it.
-
-An enabled session builds the CodeGraph index for its Git repository and keeps it synchronized while the session runs. Existing indexes sync in the background at startup, except in `manual` mode. No cron or manual initialization is needed. The Tools page reports the repository containing the dashboard's working directory and the recently observed watcher state. Dashboard indexing and sync actions accept requests only from the local machine.
-
-The index follows your edits at the interval you choose. The choice is shared by every agent, set in the dashboard's Quick start or with `tersio modes codegraph-sync <mode>`:
-
-| Mode | When the index follows changes |
-|---|---|
-| `live` | A file watcher, debounced at 1.5 seconds, plus a sync after each edit tool call. The default. |
-| `5m`, `15m`, `1h` | No watcher; an incremental sync on that timer. |
-| `manual` | Only `tersio codegraph sync`, `/codegraph sync`, or the dashboard's Sync Now. |
-
-Uninstall leaves project indexes and the downloaded CodeGraph bundle in place.
-
 ## ⌨️ Commands reference
 
 Mode switches live on their own commands; bare `/tersio` prints status. A switch also saves the default for the next session, while reopening a session restores the entries that session already carries. Every mode command, and every session start, prints the status line:
 
 ```
-🧩 COMBO MAX: 🪨 caveman=ULTRA | 🗜️ rtk=ON | 🍃 headroom=ON | 🧠 ponytail=ULTRA | 🥔 pstack=ON
+🧩 COMBO MAX: 🪨 caveman=ULTRA | 🗜️ rtk=ON | 🍃 headroom=ON | 🧠 ponytail=ULTRA | 🥔 pstack=ON | 🕸️ codegraph:ON
 ```
 
 It is display-only — it never enters the model context, so it costs the session nothing.
@@ -213,7 +193,7 @@ It is display-only — it never enters the model context, so it costs the sessio
 | `/ponytail off\|lite\|full\|ultra\|status` | [Ponytail](https://github.com/DietrichGebert/ponytail) code levels. |
 | `/pstack on\|off\|status` | [pstack](https://github.com/cursor/plugins/tree/main/pstack) rigor mode. Opt-in; `normal mode` clears it. |
 | `/headroom on\|off\|status` | [Headroom](https://github.com/headroomlabs-ai/headroom) compression. Opt-in; Tersio reads its savings and never installs it silently. |
-| `tersio modes codegraph on\|off`, `tersio modes codegraph-sync <mode>` | CodeGraph defaults and sync interval. `--host <agent>` scopes on/off to one agent; sync is shared. |
+| `/codegraph on\|off\|status` | [CodeGraph](https://github.com/colbymchenry/codegraph) code search. Opt-in; the sync interval is shared across agents. |
 | `/tersio status [on\|off\|toggle]` | Active modes and combo level. `on`, `off`, or `toggle` shows or hides the footer status line and saves the choice for this agent. |
 | `/tersio update <ponytail\|rtk\|caveman\|all> [--dry-run]` | Update add-ons. |
 | `/tersio dashboard` | Open the dashboard. |

@@ -11,6 +11,7 @@ import {
   headroomProxyUrl,
   headroomRuntimeUp,
   proxyArgsForDeployment,
+  withoutTelemetry,
   reapProxies,
   releaseHeadroomLease,
   touchHeadroomLease,
@@ -57,8 +58,18 @@ describe('headroom runtime', () => {
       '--backend',
       'anthropic',
       '--disable-kompress',
+      '--no-subscription-tracking',
+      '--no-tray',
     ]);
-    expect(proxyArgsForDeployment([], 9911)).toEqual(['--host', '127.0.0.1', '--port', '9911', '--disable-kompress']);
+    expect(proxyArgsForDeployment([], 9911)).toEqual([
+      '--host',
+      '127.0.0.1',
+      '--port',
+      '9911',
+      '--disable-kompress',
+      '--no-subscription-tracking',
+      '--no-tray',
+    ]);
     expect(proxyArgsForDeployment(['--mode', 'token'], 9911, { openai: 'http://127.0.0.1:3425/v1' })).toEqual([
       '--mode',
       'token',
@@ -69,7 +80,26 @@ describe('headroom runtime', () => {
       '--openai-api-url',
       'http://127.0.0.1:3425/v1',
       '--disable-kompress',
+      '--no-subscription-tracking',
+      '--no-tray',
     ]);
+  });
+
+  // A saved `--telemetry` writes HEADROOM_TELEMETRY=on after the environment is read, so the flag must go.
+  test('a saved telemetry opt-in is replaced by the opt-out', () => {
+    const saved = ['--mode', 'token', '--telemetry', '--backend', 'anthropic'];
+    const out = withoutTelemetry(saved);
+    expect(out).not.toContain('--telemetry');
+    expect(out).toContain('--no-telemetry');
+    expect(out).toEqual([
+      '--mode',
+      'token',
+      '--backend',
+      'anthropic',
+      '--no-telemetry',
+    ]);
+    // A deployment that already opted out keeps exactly one switch.
+    expect(withoutTelemetry(['--no-telemetry'])).toEqual(['--no-telemetry']);
   });
 
   // The model is off by default, not forced off: a deployment that turned Kompress back on keeps it.

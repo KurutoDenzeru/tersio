@@ -554,3 +554,8 @@ The entries below are editing and verification discipline. No test, lint rule, o
 **What happened:** while measuring the leak, I killed every headroom process whose parent was init, to clear 41 strays. The live proxy serves agents from a detached session, so its parent is also init, and it went down too. The dashboard and the agent lost their route until the next start.
 **Root cause:** process ownership was inferred from `ppid`, which is how a detached proxy looks after its launcher exits, not a sign that a process is abandoned.
 **Prevention rule:** kill a process only when its argv proves it is the user's target: match `headroom proxy` for proxies and the `multiprocessing` run string for their workers. Check how the live one is started before reaping anything by parent.
+
+## 2026-11-25 — Measurement scripts failed silently and one hung for 900 seconds.
+**What happened:** a load test hung until timeout because a helper definition was mis-quoted, so the shell consumed the whole script before running the test. Two probes printed an empty RSS field. One probe exited on `env: illegal option -- d` and never started the proxy.
+**Root cause:** inline shell was built by string concatenation, so a quote or a flag boundary shifted the command. `env` parsed the binary variable as its own option. An empty `ps` capture was reported as a measurement instead of an error.
+**Prevention rule:** write measurement scripts to a file and print the exact argv before a timed run. Pass environment assignments to `env` before the binary, never a variable that holds the binary. Fail a probe when the RSS capture is empty.

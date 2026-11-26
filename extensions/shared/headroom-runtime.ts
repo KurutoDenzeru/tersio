@@ -354,7 +354,41 @@ export function headroomFitsMachine(): { fits: boolean; detail: string; totalMb:
 const HEADROOM_MEMORY_DEFAULTS: ReadonlyArray<{ flag: string; value: string; unless: readonly string[] }> = [
   // Turning the model back on is the opposite flag, so it has to count as "already chosen".
   { flag: '--disable-kompress', value: '', unless: ['--disable-kompress', '--enable-kompress'] },
+  // Both poll a remote nobody reads here: a subscription usage request every 300s, and a tray icon.
+  { flag: '--no-subscription-tracking', value: '', unless: ['--subscription-tracking'] },
+  { flag: '--no-tray', value: '', unless: ['--tray'] },
 ];
+
+/**
+ * Environment the proxy is started with. These are env-only: headroom reads each one before it binds.
+ *
+ * The beacon uploads anonymous compression stats to Headroom Labs and is ON unless told otherwise, so
+ * it is turned off here along with the local telemetry file. The eager preload loads Magika and eight
+ * tree-sitter parsers at startup for content that may never arrive; measured, skipping it saves 34MB.
+ * The two cache bounds cap growth: the defaults allow 500 sessions with 10k entries each.
+ */
+const HEADROOM_MEMORY_ENV: Readonly<Record<string, string>> = {
+  HEADROOM_TELEMETRY: 'off',
+  HEADROOM_BEACON: 'off',
+  DO_NOT_TRACK: '1',
+  HEADROOM_EAGER_PRELOAD_TIMEOUT_SECONDS: '0',
+  HEADROOM_COMPRESSION_CACHE_MB: '16',
+  HEADROOM_COMPRESSION_CACHE_MAX_SESSIONS: '50',
+};
+
+/** The proxy's environment: the caller's, plus the memory and telemetry bounds above. */
+function proxyEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, ...HEADROOM_MEMORY_ENV };
+}
+
+/**
+ * Drops both telemetry switches and appends the opt-out. The environment alone cannot win: headroom
+ * maps the `--telemetry` flag onto `HEADROOM_TELEMETRY=on` after it reads the environment, so a saved
+ * deployment that opted in would stay opted in. Fail-closed, the same way headroom resolves both flags.
+ */
+export function withoutTelemetry(args: string[]): string[] {
+  return [...args.filter((arg) => arg !== '--telemetry' && arg !== '--no-telemetry'), '--no-telemetry'];
+}
 
 /** Adds a bound only when the deployment has not already chosen, either way, so an explicit choice wins. */
 function withDefaultFlag(args: string[], flag: string, value: string, unless: readonly string[]): string[] {
@@ -389,6 +423,8 @@ function configureDeployment(entry: DeploymentProfile, upstreams: HeadroomUpstre
       baseEnv[HEADROOM_UPSTREAM_ENV[dialect]] = url;
       args = withFlag(args, HEADROOM_UPSTREAM_FLAG[dialect], url);
     }
+    // The launcher fallback reads base_env, not the caller's environment, so the bounds go here too.
+    for (const [name, value] of Object.entries(HEADROOM_MEMORY_ENV)) baseEnv[name] = value;
     manifest.base_env = baseEnv;
     manifest.proxy_args = args;
     entry.proxyArgs = args;
@@ -422,7 +458,7 @@ async function startRuntime(bin: string, upstreams: HeadroomUpstreams = {}): Pro
   if (upstreamEntries(upstreams).length > 0) {
     for (const entry of profiles) configureDeployment(entry, upstreams);
   }
-  const args = proxyArgsForDeployment(profiles[0]?.proxyArgs ?? [], port, upstreams);
+  const args = withoutTelemetry(proxyArgsForDeployment(profiles[0]?.proxyArgs ?? [], port, upstreams));
   // A previous proxy that died without releasing its pool leaves workers holding its models; a new
   // proxy would run beside them, so the strays are reclaimed before it starts. No proxy is alive
   // here, which is what makes every worker found an orphan.
@@ -433,6 +469,7 @@ async function startRuntime(bin: string, upstreams: HeadroomUpstreams = {}): Pro
       detached: true,
       stdio: 'ignore',
       cwd: homeDir(),
+      env: proxyEnv(),
     });
     // A missing binary reports through the error event, not a throw; without this it crashes the caller.
     child.on('error', (e: Error) => {
