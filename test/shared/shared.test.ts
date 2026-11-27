@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -431,6 +431,39 @@ test.skipIf(!hasBun() || !hasSqlite())("the Bun engine answers exactly as this s
     expect(answered.engine, 'Bun answers through bun:sqlite').toBe('bun');
     expect(answered.tsv, "the Bun rung returns what this suite's engine returns").toBe(local);
   } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// A cache keyed on mtime+size alone cannot tell two files apart: a filesystem may report the same
+// pair for both, and the second file then reads the first file's prices.
+test('two override files with identical mtime and size stay distinct', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'tersio-override-key-'));
+  const model = 'opencode-zen/muse-spark-1.3-contributor';
+  const make = (v: number): string => {
+    const f = path.join(dir, `p${v}.json`);
+    writeFileSync(f, JSON.stringify({ [model]: { input: v, output: v, cacheRead: v, cacheWrite: v } }));
+    const st = statSync(f);
+    utimesSync(f, st.atime, new Date(1_700_000_000_000));
+    return f;
+  };
+  const a = make(5);
+  const b = make(7);
+  const sa = statSync(a);
+  const sb = statSync(b);
+  const prev = setEnv({
+    TERSIO_PRICES_FILE: path.join(dir, 'prices.json'),
+    TERSIO_PRICES_OVERRIDE_FILE: a,
+  });
+  try {
+    writeFileSync(process.env.TERSIO_PRICES_FILE!, JSON.stringify(twoProviderFeed()), 'utf8');
+    // Byte-different but stat-identical: the case that served one file's prices for the other.
+    expect(`${sa.mtimeMs}:${sa.size}`).toBe(`${sb.mtimeMs}:${sb.size}`);
+    expect(priceFor(model).price.input).toBe(5);
+    process.env.TERSIO_PRICES_OVERRIDE_FILE = b;
+    expect(priceFor(model).price.input).toBe(7);
+  } finally {
+    restoreEnv(prev);
     rmSync(dir, { recursive: true, force: true });
   }
 });

@@ -478,6 +478,12 @@ function dedupeMessages(db: string): void {
 
 function ensureSchema(db: string, forceWipe: boolean): void {
   fs.mkdirSync(path.dirname(db), { recursive: true });
+  // The ledger holds absolute transcript paths, which name the user, so only the owner may read it.
+  try {
+    fs.chmodSync(db, 0o600);
+  } catch {
+    /* the file may not exist yet on a first run; the next sync opens and tightens it */
+  }
   // Fold in rows stored under a pre-alias spelling; the mtime ledger will not re-read those transcripts.
   const rekeys = MODEL_ALIASES.map((a) => `UPDATE messages SET model='${a.id}' WHERE model='${a.feed}';`).join('');
   const stored = storedParserVersion(db);

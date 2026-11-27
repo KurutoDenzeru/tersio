@@ -100,12 +100,12 @@ function writeCacheText(text: string): boolean {
 }
 
 /** The override map: the env file, else the settings store, else the legacy file imported once. */
-function overrideSource(): { text: string | null; stamp: number } {
+function overrideSource(): { text: string | null; stamp: string | number } {
   const envFile = process.env.TERSIO_PRICES_OVERRIDE_FILE;
   if (envFile) {
     try {
       const s = fs.statSync(envFile);
-      return { text: fs.readFileSync(envFile, 'utf8'), stamp: s.mtimeMs };
+      return { text: fs.readFileSync(envFile, 'utf8'), stamp: `${s.mtimeMs}:${s.size}` };
     } catch {
       return { text: null, stamp: 0 };
     }
@@ -154,36 +154,45 @@ export function savePricesOverride(prices: Record<string, unknown>): boolean {
   }
 }
 
-/** The override's mtime, or 0 when absent. A stat only, because this sits on the price lookup path. */
-function overrideStamp(): number {
-  const envFile = process.env.TERSIO_PRICES_OVERRIDE_FILE;
-  if (envFile) {
+/**
+ * The override's identity, or 0 when absent. A stat only, because this sits on the price lookup path.
+ * Size is part of it because a filesystem may report the same mtime for two writes in one tick, and an
+ * edit that lands inside that tick would otherwise be invisible until the next refresh.
+ */
+function overrideStamp(): string | number {
+  const stampOf = (file: string): string | number => {
     try {
-      return fs.statSync(envFile).mtimeMs;
+      const s = fs.statSync(file);
+      return `${s.mtimeMs}:${s.size}`;
     } catch {
       return 0;
     }
-  }
-  try {
-    return fs.statSync(tersioSettingsFile()).mtimeMs;
-  } catch {
-    return 0;
-  }
+  };
+  const envFile = process.env.TERSIO_PRICES_OVERRIDE_FILE;
+  return envFile ? stampOf(envFile) : stampOf(tersioSettingsFile());
 }
 
-let overrideCache: { stamp: number; exact: Map<string, ModelPrice>; tails: Array<[string, ModelPrice]> } | null = null;
+let overrideCache: {
+  source: string;
+  stamp: string | number;
+  exact: Map<string, ModelPrice>;
+  tails: Array<[string, ModelPrice]>;
+} | null = null;
 
 /** Reads the override file, keeping a `*`-prefixed entry as a suffix matcher. */
 function loadOverrides(
   stamp = overrideStamp(),
 ): { exact: Map<string, ModelPrice>; tails: Array<[string, ModelPrice]> } | null {
-  if (overrideCache && overrideCache.stamp === stamp) return overrideCache;
+  // Keyed on the file too: two paths can report the same mtime and size, so a stamp alone would
+  // serve one file's prices for another's.
+  const file = process.env.TERSIO_PRICES_OVERRIDE_FILE ?? tersioSettingsFile();
+  if (overrideCache && overrideCache.stamp === stamp && overrideCache.source === file) return overrideCache;
   const exact = new Map<string, ModelPrice>();
   const tails: Array<[string, ModelPrice]> = [];
   try {
-    const source = overrideSource().text;
-    if (source === null) return null;
-    const parsed = JSON.parse(source) as Record<string, unknown>;
+    const body = overrideSource().text;
+    if (body === null) return null;
+    const parsed = JSON.parse(body) as Record<string, unknown>;
     for (const [id, row] of Object.entries(parsed ?? {})) {
       const price = asPrice(row);
       if (!price) continue;
@@ -193,7 +202,7 @@ function loadOverrides(
   } catch {
     /* an unreadable override is empty, not fatal */
   }
-  overrideCache = { stamp, exact, tails };
+  overrideCache = { source: file, stamp, exact, tails };
   return overrideCache;
 }
 
@@ -287,9 +296,11 @@ export function priceFor(model: string, live?: LivePrices | null): PriceHit {
   if (live === undefined) {
     // An operator who edits the override file expects the new price at once, not after a refresh.
     const stamp = overrideStamp();
-    if (memoTable !== table || memoStamp !== stamp) {
+    const file = process.env.TERSIO_PRICES_OVERRIDE_FILE ?? tersioSettingsFile();
+    if (memoTable !== table || memoStamp !== stamp || memoFile !== file) {
       memoTable = table;
       memoStamp = stamp;
+      memoFile = file;
       memo = new Map();
     }
     const hit = memo.get(model);
@@ -303,7 +314,8 @@ export function priceFor(model: string, live?: LivePrices | null): PriceHit {
 
 // Recent rows repeat a few models; the memo turns thousands of lookups into one per model. Cleared on table change.
 let memoTable: LivePrices | null | undefined;
-let memoStamp = 0;
+let memoStamp: string | number = 0;
+let memoFile = '';
 let memo = new Map<string, PriceHit>();
 
 // Validated once per table instead of once per lookup.

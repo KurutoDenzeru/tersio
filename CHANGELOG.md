@@ -14,8 +14,11 @@
 ### Fixed
 - A stopped Headroom proxy takes its worker pool with it. Headroom runs image compression in a spawned subprocess, and a stop that signalled only the proxy reparented that worker to init, where it kept its ONNX models for the life of the machine. On this machine 41 such strays held 2.4GB. The stop now reads the process tree before it signals anything, stops the proxy first, then the workers. A start reclaims any worker left with no proxy running, so a pool orphaned by an earlier stop cannot outlive the next one.
 - The share card printed its first month twice. Column zero opens on the Sunday before the window, so it usually catches the tail of the month before, and that month earned a label for a column it barely reached. A month needs its own first week inside the grid now, which leaves the twelve months a year actually holds.
-- CodeGraph answers every host that carries the mode. DSH and Codex reported a hardcoded `off` while the stored default was already `on`; both read the default now, DSH offers the row in its popover, and Codex answers `/codegraph`. A mis-set `CODEGRAPH_LIB_PATH` is refused unless it names the bundle's own entry point, and the bundle loads through one cached dynamic import instead of a raw `require`.
 - CodeGraph no longer wedges or collides under load. Every worker request carries a deadline, so a worker that stops answering fails the call instead of holding the turn open. Syncs take a cross-process lock, because two agent processes on one repository were two SQLite writers and SQLite answered that with `disk I/O error`. Callers are capped at the source instead of crossing the worker boundary to be dropped. Status files whose writer is gone are reclaimed on the write path, so one file per session no longer accumulates.
+
+
+### Security
+- `SECURITY.md` now states what the ledger holds, what leaves the machine, and where the legal duties sit. The ledger stores an absolute transcript path, so it names you; the file is `0600` from the first schema open instead of inheriting the umask. Four outbound requests are named: a currency lookup, a price refresh, install and update, and a Sync target you configure yourself. The declaration places controller duties with whoever runs the machine, because no personal data reaches the maintainers and no processing agreement is offered.
 
 ## v2.25.22
 
