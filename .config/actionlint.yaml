@@ -1,7 +1,0 @@
----
-# Labels that are GA on GitHub-hosted runners (changelog 2026-09-17)
-# but newer than the bundled label list of the repo lint hook.
-self-hosted-runner:
-  labels:
-    - ubuntu-26.04
-    - ubuntu-26.04-arm
