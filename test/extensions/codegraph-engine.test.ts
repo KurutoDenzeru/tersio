@@ -104,7 +104,7 @@ export function helper(): void {}`,
     fs.writeFileSync(path.join(root, '.codegraph', '.gitignore'), '*\n');
     fs.writeFileSync(path.join(root, 'placeholder.ts'), 'export function placeholder() {}');
 
-    expect(hasCodeGraphIndex(root)).toBe(false);
+    expect(await hasCodeGraphIndex(root)).toBe(false);
     expect(fs.existsSync(path.join(root, '.codegraph', 'codegraph.db'))).toBe(false);
     expect(await ensureInitializedAndWatching(root)).toBe(true);
 
@@ -119,7 +119,7 @@ export function helper(): void {}`,
     expect(status.error).toBeUndefined();
     expect(status.initialized).toBe(true);
     expect((await exploreSymbol('placeholder', root)).symbols[0]?.node.name).toBe('placeholder');
-    expect(hasCodeGraphIndex(root)).toBe(true);
+    expect(await hasCodeGraphIndex(root)).toBe(true);
     stopWatching(root);
   });
 
@@ -133,7 +133,7 @@ export function helper(): void {}`,
       const graph = await getCodeGraph(root);
       await graph.indexAll();
       graph.close();
-      expect(hasCodeGraphIndex(root)).toBe(true);
+      expect(await hasCodeGraphIndex(root)).toBe(true);
       const reopened = await getCodeGraph(root);
       try {
         expect((await reopened.getNodesByName('custom'))[0]?.name).toBe('custom');

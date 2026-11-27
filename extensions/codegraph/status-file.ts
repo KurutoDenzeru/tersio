@@ -50,6 +50,11 @@ function parseStatus(value: unknown): StoredStatus | null {
 
 export function writeWatcherStatus(root: string, status: WatcherStatus): void {
   const { directory, file } = statusPath(root);
+  try {
+    pruneStaleWatcherStatuses(root);
+  } catch {
+    /* a failed sweep must not stop the write */
+  }
   const temporary = `${file}.tmp`;
   mkdirSync(directory, { recursive: true });
   try {
@@ -68,6 +73,43 @@ export function writeWatcherStatus(root: string, status: WatcherStatus): void {
   } catch (error) {
     rmSync(temporary, { force: true });
     throw error;
+  }
+}
+
+/** Whether the pid in `<hash>-<pid>.json` can still write. EPERM means it lives on. */
+function ownerAlive(name: string): boolean {
+  const pid = Number(name.match(/-(\d+)\.json$/)?.[1]);
+  if (!Number.isSafeInteger(pid) || pid <= 0 || pid === process.pid) return true;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error instanceof Error && 'code' in error && error.code === 'EPERM';
+  }
+}
+
+/** Drop files whose writer is gone and whose stamp aged out. Read output is unchanged. */
+export function pruneStaleWatcherStatuses(root: string): void {
+  let location: StatusLocation;
+  let files: string[];
+  try {
+    location = statusPath(root);
+    files = readdirSync(location.directory);
+  } catch {
+    return;
+  }
+  const now = Date.now();
+  for (const name of files) {
+    if (!name.startsWith(location.prefix) || !name.endsWith('.json')) continue;
+    const file = path.join(location.directory, name);
+    try {
+      const status = parseStatus(JSON.parse(readFileSync(file, 'utf8')));
+      if (!status || status.updatedAt >= now - MAX_AGE_MS) continue;
+      if (ownerAlive(name)) continue;
+      rmSync(file, { force: true });
+    } catch {
+      // A concurrently removed file is already gone.
+    }
   }
 }
 

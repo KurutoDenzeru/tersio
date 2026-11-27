@@ -20,6 +20,14 @@ interface Pending {
   reject: (reason: Error) => void;
 }
 
+// A worker that stops answering must not hold a turn open for the session.
+const REQUEST_TIMEOUT_MS = 120_000;
+
+function requestTimeoutMs(): number {
+  const configured = Number(process.env.TERSIO_CODEGRAPH_TIMEOUT_MS ?? '');
+  return Number.isFinite(configured) && configured > 0 ? configured : REQUEST_TIMEOUT_MS;
+}
+
 interface Worker {
   child: ChildProcess;
   pending: Map<number, Pending>;
@@ -116,13 +124,35 @@ function request<T>(payload: Request): Promise<T> {
   const id = ++nextId;
   setReferenced(instance.child, true);
   return new Promise<T>((resolve, reject) => {
-    instance.pending.set(id, { resolve: (value) => resolve(value as T), reject });
+    const settle = (): void => {
+      if (instance.pending.size === 0) setReferenced(instance.child, false);
+    };
+    // unref'd: a deadline must not be the reason the host process stays alive.
+    const timer = setTimeout(() => {
+      const waiting = instance.pending.get(id);
+      if (!waiting) return;
+      instance.pending.delete(id);
+      reject(new Error(`CodeGraph did not answer within ${requestTimeoutMs()}ms.`));
+      settle();
+    }, requestTimeoutMs());
+    timer.unref();
+    instance.pending.set(id, {
+      resolve: (value) => {
+        clearTimeout(timer);
+        resolve(value as T);
+      },
+      reject: (reason) => {
+        clearTimeout(timer);
+        reject(reason);
+      },
+    });
     instance.child.send({ id, ...payload }, (error) => {
       if (!error) return;
       const waiting = instance.pending.get(id);
       instance.pending.delete(id);
+      clearTimeout(timer);
       waiting?.reject(error);
-      if (instance.pending.size === 0) setReferenced(instance.child, false);
+      settle();
     });
   });
 }

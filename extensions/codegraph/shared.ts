@@ -3,7 +3,9 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 import { homeDir, tersioHome } from '../shared/utils.ts';
 import type { CodegraphSyncMode, HostScope } from '../shared/plugin-settings.ts';
 import { readCodegraphDefault, readCodegraphSync } from '../shared/plugin-settings.ts';
@@ -47,8 +49,9 @@ interface UpstreamCodeGraphClass {
  * Locate the CodeGraph bundle library.
  */
 export function resolveCodeGraphLibrary(): string | null {
+  // A custom path must be the bundle's entry point, not an arbitrary module.
   const custom = process.env.CODEGRAPH_LIB_PATH;
-  if (custom && fs.existsSync(custom)) return custom;
+  if (custom && custom.endsWith(path.join('lib', 'dist', 'index.js')) && fs.existsSync(custom)) return custom;
 
   const target = `${process.platform}-${process.arch}`;
   const bundled = [
@@ -128,15 +131,38 @@ function requireRepoRoot(projectRoot: string): string {
   return root;
 }
 
-/** Whether the repository holding `projectRoot` already has a CodeGraph index on disk. */
-export function hasCodeGraphIndex(projectRoot = process.cwd()): boolean {
-  const root = findRepoRoot(projectRoot);
+/** The one place the bundle loads, so the path is checked once and cached. */
+let loadedClass: UpstreamCodeGraphClass | undefined;
+
+/** The bundle entry point, so a mis-set `CODEGRAPH_LIB_PATH` cannot load any module. */
+function isTrustedLibraryEntry(lib: string): boolean {
+  return lib.endsWith(path.join('lib', 'dist', 'index.js')) && fs.existsSync(lib);
+}
+
+/** The loaded CodeGraph class, or null when the bundle is absent or its path is not trusted. */
+async function loadCodeGraphClass(): Promise<UpstreamCodeGraphClass | null> {
+  if (loadedClass) return loadedClass;
   const lib = resolveCodeGraphLibrary();
-  if (!root || !lib) return false;
+  if (!lib || !isTrustedLibraryEntry(lib)) return null;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require(lib) as { CodeGraph: UpstreamCodeGraphClass };
-    return mod.CodeGraph.isInitialized(root);
+    const mod = (await import(pathToFileURL(lib).href)) as { CodeGraph?: UpstreamCodeGraphClass; default?: { CodeGraph?: UpstreamCodeGraphClass } };
+    const Graph = mod.CodeGraph ?? mod.default?.CodeGraph;
+    if (!Graph) return null;
+    loadedClass = Graph;
+    return loadedClass;
+  } catch {
+    return null;
+  }
+}
+
+/** Whether the repository holding `projectRoot` already has a CodeGraph index on disk. */
+export async function hasCodeGraphIndex(projectRoot = process.cwd()): Promise<boolean> {
+  const root = findRepoRoot(projectRoot);
+  if (!root) return false;
+  const CG = await loadCodeGraphClass();
+  if (!CG) return false;
+  try {
+    return CG.isInitialized(root);
   } catch {
     return false;
   }
@@ -146,19 +172,15 @@ export function hasCodeGraphIndex(projectRoot = process.cwd()): boolean {
  * Open or initialize CodeGraph for the git repository holding a project directory.
  */
 export async function getCodeGraph(projectRoot = process.cwd(), autoInit = true): Promise<UpstreamCodeGraph> {
-  const lib = resolveCodeGraphLibrary();
-  if (!lib) {
+  const CG = await loadCodeGraphClass();
+  if (!CG) {
     throw new Error(
       'CodeGraph bundle is not installed. Install via npm: npm i -g @colbymchenry/codegraph or run `codegraph` once.',
     );
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const mod = require(lib) as { CodeGraph: UpstreamCodeGraphClass };
-  const CG = mod.CodeGraph;
-
   const root = requireRepoRoot(projectRoot);
-  if (!hasCodeGraphIndex(root)) {
+  if (!(await hasCodeGraphIndex(root))) {
     if (!autoInit) {
       throw new Error(`CodeGraph is not initialized in ${root}. Run init first.`);
     }
@@ -171,6 +193,9 @@ export async function getCodeGraph(projectRoot = process.cwd(), autoInit = true)
 /**
  * Explore a symbol or query across the codebase.
  */
+/** The render shows five; the rest were carried only to be dropped. */
+const MAX_CALLERS_PER_SYMBOL = 25;
+
 export async function exploreSymbol(query: string, projectRoot = process.cwd()): Promise<ExploreResult> {
   const building = activeWatchers.get(requireRepoRoot(projectRoot));
   // A build in progress means half an index: wait for the whole one rather than half the callers.
@@ -188,7 +213,8 @@ export async function exploreSymbol(query: string, projectRoot = process.cwd()):
     const symbols: ExploreResult['symbols'] = [];
 
     for (const node of nodes.slice(0, 10)) {
-      const callers = await cg.getCallers(node.id);
+      // Capped before IPC: a hub symbol can carry hundreds of callers.
+      const callers = (await cg.getCallers(node.id)).slice(0, MAX_CALLERS_PER_SYMBOL);
       const impact = await cg.getImpactRadius(node.id);
       const files = new Set<string>();
       for (const hit of impact.nodes?.values() ?? []) if (hit.filePath) files.add(hit.filePath);
@@ -343,7 +369,7 @@ export async function ensureInitializedAndWatching(projectRoot = process.cwd()):
   registerProcessCleanup();
   const entry: ActiveWatcher = { root, status: 'indexing', watching: false };
   activeWatchers.set(root, entry);
-  if (hasCodeGraphIndex(root)) {
+  if (await hasCodeGraphIndex(root)) {
     // Opening an existing index is quick, so the watcher is live when the caller resumes.
     await initializeWatcher(entry);
     return entry.status !== 'failed';
@@ -354,7 +380,7 @@ export async function ensureInitializedAndWatching(projectRoot = process.cwd()):
 }
 
 async function initializeWatcher(entry: ActiveWatcher): Promise<void> {
-  const hadIndex = hasCodeGraphIndex(entry.root);
+  const hadIndex = await hasCodeGraphIndex(entry.root);
   let cg: UpstreamCodeGraph | undefined;
   try {
     cg = await getCodeGraph(entry.root, true);
@@ -433,9 +459,61 @@ async function runSync(entry: ActiveWatcher): Promise<void> {
 }
 
 // One sync per index at a time: the debounce, the interval and an explicit sync share it.
+// One sync at a time across processes: two SQLite writers on one file answer with "disk I/O error".
+const SYNC_LOCK_STALE_MS = 60_000;
+
+function syncLockFile(root: string): string {
+  const hash = createHash('sha256').update(root).digest('hex').slice(0, 16);
+  return path.join(tersioHome(), 'codegraph', `sync-${hash}.lock`);
+}
+
+export function acquireSyncLock(root: string): (() => void) | null {
+  const file = syncLockFile(root);
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+  } catch {
+    return null;
+  }
+  const release = (): void => {
+    try {
+      fs.rmSync(file, { force: true });
+    } catch {
+      /* a lock that cannot be removed only delays the next sync */
+    }
+  };
+  try {
+    fs.writeFileSync(file, String(process.pid), { flag: 'wx', mode: 0o600 });
+    return release;
+  } catch {
+    /* held: decide below whether the holder is gone */
+  }
+  try {
+    if (Date.now() - fs.statSync(file).mtimeMs > SYNC_LOCK_STALE_MS) {
+      fs.rmSync(file, { force: true });
+      fs.writeFileSync(file, String(process.pid), { flag: 'wx', mode: 0o600 });
+      return release;
+    }
+  } catch {
+    /* raced another reclaimer: skip this attempt rather than double-write */
+  }
+  return null;
+}
+
+async function runLockedSync(entry: ActiveWatcher): Promise<void> {
+  const release = acquireSyncLock(entry.root);
+  // Another process is already syncing this repository. Its pass covers the same files, so skipping
+  // loses nothing and avoids the write collision that SQLite reports as an I/O error.
+  if (!release) return;
+  try {
+    await runSync(entry);
+  } finally {
+    release();
+  }
+}
+
 function syncEntry(entry: ActiveWatcher): Promise<void> {
   if (!entry.syncing) {
-    entry.syncing = runSync(entry).finally(() => {
+    entry.syncing = runLockedSync(entry).finally(() => {
       entry.syncing = undefined;
     });
   }
@@ -507,7 +585,7 @@ export async function syncCodeGraph(projectRoot = process.cwd()): Promise<CodeGr
     return await entry.cg.getStats();
   }
   // A repository with no index yet has nothing to sync against; build it instead of reporting zero nodes.
-  const hadIndex = hasCodeGraphIndex(root);
+  const hadIndex = await hasCodeGraphIndex(root);
   const cg = await getCodeGraph(root, true);
   try {
     if (hadIndex) await cg.sync();
@@ -549,7 +627,7 @@ export async function getCodeGraphStatus(projectRoot = process.cwd()): Promise<C
     isIndexing: entry?.status === 'indexing',
     error: entry?.error,
   };
-  if (entry?.status === 'indexing' || !hasCodeGraphIndex(root)) {
+  if (entry?.status === 'indexing' || !(await hasCodeGraphIndex(root))) {
     return { ...empty, ...live };
   }
 
